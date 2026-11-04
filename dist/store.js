@@ -1,0 +1,39 @@
+/* Local-only commerce simulator. Never a payment or authentication service. */
+(() => {
+const KEY='romanz-demo-store-v2',BAG='romanz-bag-v1';
+const clone=x=>JSON.parse(JSON.stringify(x));
+const base=clone(window.ROMANZ_PRODUCTS);
+const extra=[['luna-petite','Luna Petite Hoops','luna-hoops',3900],['luna-bold','Luna Bold Hoops','luna-hoops',6900],['aurora-rose','Aurora Rose Edition','aurora-ring',13900],['celeste-promise','Celeste Promise Ring','emerald-cut',9900],['link-mini','Petite Link Bracelet','link-bracelet',4900],['link-bold','Statement Link Bracelet','link-bracelet',8900],['golden-charms','Golden Charms Necklace','golden-hour',8900],['heritage-evening','Heritage Evening Set','heritage-set',21900],['royal-celebration','Royal Celebration Set','occasion-set',34900]];
+for(const [id,name,source,price] of extra){const p=clone(base.find(p=>p.id===source));Object.assign(p,{id,name,price,tag:'New sample style',description:p.description+' Illustrative sample variant; photography is shared with its collection.'});base.push(p);}
+const defaults=base.map((p,i)=>({...p,stock:12+i%9,active:true}));
+const initial=()=>({version:2,products:clone(defaults),orders:[],transactions:[]});
+function load(){try{const v=JSON.parse(localStorage.getItem(KEY));if(v&&v.version===2&&Array.isArray(v.products)&&Array.isArray(v.orders)&&Array.isArray(v.transactions))return v;}catch{}return initial();}
+function save(s){localStorage.setItem(KEY,JSON.stringify(s));}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function money(n){return 'LKR '+Number(n).toLocaleString('en-LK',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function uid(prefix){return prefix+'-'+crypto.randomUUID().slice(0,8).toUpperCase();}
+function cart(){try{const b=JSON.parse(localStorage.getItem(BAG)||'[]');return Array.isArray(b)?b:[];}catch{return [];}}
+function quote(items,delivery='standard'){
+ const state=load();if(!Array.isArray(items)||!items.length)throw Error('Your bag is empty.');
+ let total=0;const totals={};const lines=items.map(i=>{const p=state.products.find(p=>p.id===i.id);if(!p||!p.active)throw Error('A piece is no longer available. Please update your bag.');if(!p.options.includes(i.option)||!Number.isInteger(i.qty)||i.qty<1||i.qty>10)throw Error('Please check your bag quantities and sizes.');totals[p.id]=(totals[p.id]||0)+i.qty;total+=p.price*i.qty;return {id:p.id,name:p.name,image:p.image,option:i.option,price:p.price,qty:i.qty};});
+ for(const [id,n] of Object.entries(totals)){const p=state.products.find(p=>p.id===id);if(n>p.stock)throw Error(p.name+': only '+p.stock+' available in the demo inventory.');}
+ if(!['standard','collection'].includes(delivery))throw Error('Choose a delivery option.');const shipping=delivery==='standard'?350:0;return {lines,subtotal:total,shipping,total:total+shipping,delivery};
+}
+function installment(total){const cents=Math.round(total*100),part=Math.floor(cents/3);return [part/100,part/100,(cents-2*part)/100];}
+function attempt(method,outcome,total,token){const s=load();s.transactions.unshift({id:uid('TX'),date:new Date().toISOString(),method,outcome,total,token,orderId:null});save(s);}
+function place({items,delivery,method,customer,token}){
+ if(!['online','cod','koko'].includes(method))throw Error('Choose a payment method.');
+ if(!token)throw Error('Checkout reference is missing. Please reload.');
+ const s=load(),existing=s.orders.find(o=>o.token===token);if(existing)return clone(existing);
+ const q=quote(items,delivery);if(!customer||!customer.name?.trim()||!customer.email?.includes('@')||!customer.address?.trim())throw Error('Complete the demo customer details.');
+ const order={id:uid('RZ'),date:new Date().toISOString(),token,...q,method,customer:{name:customer.name.trim().slice(0,80),email:customer.email.trim().slice(0,120),address:customer.address.trim().slice(0,250),city:String(customer.city||'').slice(0,80)},status:'Processing',payment:method==='cod'?'Due on delivery':method==='koko'?'Plan approved (mock)':'Paid (mock)',source:'checkout',reserved:true,installments:method==='koko'?installment(q.total):null};
+ for(const i of q.lines)s.products.find(p=>p.id===i.id).stock-=i.qty;
+ s.orders.unshift(order);s.transactions.unshift({id:uid('TX'),date:order.date,method,outcome:method==='cod'?'Awaiting cash':'Approved (mock)',total:q.total,token,orderId:order.id});save(s);
+ try{localStorage.setItem(BAG,'[]');}catch{}return clone(order);
+}
+function updateOrder(id,status,collect=false){const s=load(),o=s.orders.find(o=>o.id===id);if(!o)throw Error('Order not found.');const previousPayment=o.payment;if(!['Processing','Shipped','Delivered','Cancelled'].includes(status))throw Error('Invalid order status.');if(o.status==='Cancelled'&&status!=='Cancelled')throw Error('Cancelled orders cannot be reopened.');if(status==='Cancelled'&&o.status!=='Cancelled'){if(o.reserved)for(const i of o.lines){const p=s.products.find(p=>p.id===i.id);if(p)p.stock+=i.qty;}o.reserved=false;o.payment=o.method==='cod'?(o.payment==='Collected (mock)'?'Refunded (mock)':'Cancelled'): 'Refunded (mock)';}o.status=status;if(collect){if(o.method!=='cod'||status!=='Delivered')throw Error('Cash can only be marked collected for a delivered COD order.');o.payment='Collected (mock)';}if(o.payment!==previousPayment)s.transactions.unshift({id:uid('TX'),date:new Date().toISOString(),method:o.method,outcome:o.payment,total:o.total,orderId:o.id});save(s);return o;}
+function product(input){const s=load();if(!input.name.trim()||input.name.length>70)throw Error('Enter a product name under 70 characters.');if(!Number.isInteger(input.price)||input.price<100||input.price>1000000)throw Error('Price must be a whole LKR amount between 100 and 1,000,000.');if(!Number.isInteger(input.stock)||input.stock<0||input.stock>999)throw Error('Stock must be from 0 to 999.');if(!['rings','necklaces','earrings','bracelets','sets'].includes(input.category))throw Error('Choose a category.');if(!base.some(p=>p.image===input.image))throw Error('Choose a sample image.');let p=s.products.find(p=>p.id===input.id);if(p)Object.assign(p,{name:input.name.trim(),price:input.price,stock:input.stock,active:input.active});else{s.products.push({id:uid('piece').toLowerCase(),name:input.name.trim(),price:input.price,stock:input.stock,active:input.active,category:input.category,image:input.image,finish:'Sample finish',tag:'New arrival',description:'A new sample piece in the ROMANZ collection. Photography and product details are illustrative.',options:input.category==='rings'?['US 5','US 6','US 7','US 8','US 9']:['Standard']});}save(s);}
+function seed(){const s=load();if(s.orders.some(o=>o.source==='seed'))throw Error('Example orders are already loaded.');for(const [i,method] of ['online','cod','koko'].entries()){const p=s.products[i],total=p.price+350;const o={id:uid('SAMPLE'),token:uid('seed'),date:new Date(Date.now()-i*86400000).toISOString(),lines:[{id:p.id,name:p.name,image:p.image,option:p.options[0],price:p.price,qty:1}],subtotal:p.price,shipping:350,total,delivery:'standard',method,customer:{name:['Amaya Silva','Nimal Perera','Sara Fernando'][i],email:'sample'+i+'@example.com',address:'12 Example Lane',city:'Colombo'},status:['Delivered','Processing','Shipped'][i],payment:method==='cod'?'Due on delivery':method==='koko'?'Plan approved (mock)':'Paid (mock)',source:'seed',reserved:false,installments:method==='koko'?installment(total):null};s.orders.push(o);s.transactions.push({id:uid('TX'),date:o.date,method,outcome:method==='cod'?'Awaiting cash':'Approved (mock)',total,orderId:o.id});}save(s);}
+window.Store={load,cart,quote,place,attempt,updateOrder,product,seed,esc,money,installment,uid,defaults};
+window.ROMANZ_PRODUCTS=load().products.filter(p=>p.active).map(p=>({...p,name:esc(p.name)}));
+})();

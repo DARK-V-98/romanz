@@ -1,0 +1,17 @@
+const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict'),crypto=require('node:crypto');
+const data=new Map();const context={window:{},crypto,localStorage:{getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,String(v))}};
+vm.createContext(context);for(const f of ['catalog.js','store.js'])vm.runInContext(fs.readFileSync('dist/'+f,'utf8'),context);
+const S=context.window.Store,customer={name:'Test Customer',email:'test@example.com',address:'12 Example Lane',city:'Colombo'};
+assert.equal(S.load().products.length,18);const p=S.load().products[0],items=[{id:p.id,option:p.options[0],qty:2}];
+assert.equal(S.quote(items).total,p.price*2+350);assert.equal(S.quote(items,'collection').shipping,0);
+assert.throws(()=>S.quote([{...items[0],qty:11}]));assert.throws(()=>S.quote([{...items[0],option:'invalid'}]));
+const order=S.place({items,delivery:'standard',method:'online',customer,token:'test-online'});assert.equal(order.payment,'Paid (mock)');assert.equal(S.load().products[0].stock,p.stock-2);assert.equal(S.load().orders.length,1);
+S.place({items,delivery:'standard',method:'online',customer,token:'test-online'});assert.equal(S.load().orders.length,1);assert.equal(S.load().products[0].stock,p.stock-2);
+S.attempt('online','Declined (mock)',100,'decline');assert.equal(S.load().orders.length,1);
+S.updateOrder(order.id,'Cancelled');assert.equal(S.load().products[0].stock,p.stock);assert.equal(S.load().orders[0].payment,'Refunded (mock)');S.updateOrder(order.id,'Cancelled');assert.equal(S.load().products[0].stock,p.stock);assert.throws(()=>S.updateOrder(order.id,'Processing'));
+const cod=S.place({items,delivery:'collection',method:'cod',customer,token:'test-cod'});assert.equal(cod.payment,'Due on delivery');assert.throws(()=>S.updateOrder(cod.id,'Processing',true));S.updateOrder(cod.id,'Delivered',true);assert.equal(S.load().orders[0].payment,'Collected (mock)');
+const koko=S.place({items,delivery:'standard',method:'koko',customer,token:'test-koko'});assert.equal(koko.payment,'Plan approved (mock)');assert.equal(Math.round(koko.installments.reduce((a,b)=>a+b,0)*100),Math.round(koko.total*100));
+S.product({...p,stock:0});assert.throws(()=>S.quote(items));S.product({...p,stock:10,active:false});assert.throws(()=>S.quote(items));
+S.product({name:'Test piece',price:5000,stock:4,active:true,category:'rings',image:p.image});assert.equal(S.load().products.length,19);assert.throws(()=>S.product({name:'Bad',price:-1,stock:4,active:true,category:'rings',image:p.image}));
+assert.equal(S.esc('<img onerror="x">'),'&lt;img onerror=&quot;x&quot;&gt;');S.seed();assert.equal(S.load().orders.filter(o=>o.source==='seed').length,3);assert.throws(()=>S.seed());
+console.log('PASS: catalogue, totals, quantities, invalid variants, idempotency, stock, refunds, COD, installments, decline logging, product editing, and seed protection.');

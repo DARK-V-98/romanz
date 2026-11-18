@@ -1,4 +1,4 @@
-window.ROMANZ_PRODUCTS = [
+export const PRODUCTS = [
 {id:'luna-hoops',name:'Luna Everyday Hoops',category:'earrings',price:4900,image:'products/hoops.jpg',finish:'Gold tone',tag:'New arrival',description:'Soft curves and a polished golden glow. A simple pair of hoops to take you from a slow morning to an evening out.',options:['Pair']},
 {id:'aurora-ring',name:'Aurora Halo Ring',category:'rings',price:12900,image:'products/solitaire.jpg',finish:'Mixed metal tone',tag:'The occasion edit',description:'A brilliant round centre framed by a delicate halo and an expressive split band. A romantic accent for a memorable moment.',options:['US 5','US 6','US 7','US 8','US 9']},
 {id:'link-bracelet',name:'Golden Link Bracelet',category:'bracelets',price:6500,image:'products/chain.jpg',finish:'Gold tone',tag:'Everyday favourite',description:'Elongated links create an easy, modern silhouette. Wear it on its own or beside your favourite watch.',options:['16 cm','18 cm','20 cm']},

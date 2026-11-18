@@ -5,3 +5,7 @@ Thumbs.db
 .env.*
 *.log
 dist/
+
+# client deliverables (large binaries, shared outside git)
+client-screenshots/
+client-docs/

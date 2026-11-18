@@ -36,7 +36,15 @@ Every part of [docs/BACKEND_PLAN.md](docs/BACKEND_PLAN.md) runs as a working moc
 | Tracking | `/track` lookup by order number + email, private `/track/:id?t=` links, `/order/:id` confirmation, timeline in My account |
 | Emails / SMS | Written to **Studio → Outbox** instead of being sent |
 | Admin | Bulk mark packed, filters, CSV export, printable packing slips & labels, internal notes, COD collection, refunds, team invites & roles, audit log, settings for delivery fee, couriers and payment window |
+| Reviews & ratings | Star ratings on cards and product pages, review form, "verified buyer" when the same email received the piece, moderation queue (publish/hide/reply) in **Studio → Reviews** |
+| Wishlist & recently viewed | ♡ on every piece, `/wishlist`; saved in the browser for guests and moved into the account on sign-in |
+| Back-in-stock alerts | "Notify me" on sold-out sizes; restocking the size emails everyone waiting, once. Demand list in **Products → Waitlist** |
+| Returns & exchanges (RMA) | Customers request a refund or a different size from My account within the return window; managers approve (return label) or reject; staff check the parcel in → partial refund or a free replacement order, stock returned |
+| Courier status webhook | Courier simulator in the order drawer (arrived at hub, out for delivery, failed attempt, delivered), or switch on auto-courier in Settings to watch tracking advance by itself |
+| Reports | 7 / 30 / 90 / 365-day net revenue, AOV, refunds, discounts, repeat-customer and cancellation rates, payment-method and city split, top pieces with CSV export |
+| Studio realtime | Notification bell + toasts for new orders, payments, messages, reviews, returns and waitlist demand (works across tabs) |
+| Command palette | <kbd>Ctrl/⌘ K</kbd> in the studio jumps to any page, order, product or customer |
 
-Sample data is seeded deterministically (64 orders with timelines, messages, discount codes). Try code `WELCOME10` at checkout.
+Sample data is seeded deterministically (64 orders with timelines, reviews, messages, discount codes, a waitlist). Data saved by the previous version is migrated, not wiped. Try code `WELCOME10` at checkout.
 
 Photography is Unsplash sample imagery (see ASSETS.md). Before production you need the real backend from the plan: a database, real auth, server-side price/stock validation, a payment gateway with signed webhooks, real email/SMS, and the client's real content.

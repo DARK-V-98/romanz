@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useStore } from '../../lib/hooks.js';
 import { useAuth, actorOf } from '../../lib/auth.jsx';
-import { money, img, setStatus, nextStatuses, collectCash, addNote, bulkStatus, STATUSES, trackLink } from '../../lib/store.js';
+import { money, img, setStatus, nextStatuses, collectCash, addNote, bulkStatus, courierScan, STATUSES, trackLink } from '../../lib/store.js';
 import { Badge, fmtDate, fmtTime, Icon, Timeline } from '../../components/ui.jsx';
 
 const PAYMENTS = ['Awaiting payment', 'Paid (mock)', 'Plan approved (mock)', 'Due on delivery', 'Collected (mock)', 'Refunded (mock)', 'Cancelled'];
@@ -11,7 +11,8 @@ const ACTION = { Packed: 'Mark packed', Shipped: 'Ship…', 'Out for delivery': 
 export default function Orders() {
   const { data } = useStore(), { user } = useAuth(), actor = actorOf(user);
   const [q, setQ] = useState(''), [status, setStatusF] = useState('All'), [pay, setPay] = useState('all'), [method, setMethod] = useState('all'), [from, setFrom] = useState(''), [to, setTo] = useState('');
-  const [openId, setOpenId] = useState(null), [picked, setPicked] = useState([]), [bulkMsg, setBulkMsg] = useState('');
+  const [params, setParams] = useSearchParams(), openId = params.get('open'), setOpenId = id => setParams(id ? { open: id } : {}, { replace: true });
+  const [picked, setPicked] = useState([]), [bulkMsg, setBulkMsg] = useState('');
   const list = data.orders.filter(o => (status === 'All' || o.status === status) && (pay === 'all' || o.payment === pay) && (method === 'all' || o.method === method)
     && (!from || o.date.slice(0, 10) >= from) && (!to || o.date.slice(0, 10) <= to)
     && (o.id + o.customer.name + o.customer.email + (o.customer.phone || '') + (o.shipment?.tracking || '')).toLowerCase().includes(q.toLowerCase()));
@@ -67,7 +68,6 @@ function OrderDrawer({ o, actor, couriers, close }) {
           <h4>Next step</h4>
           <div className="row wrap">
             {next.filter(s => !['Cancelled', 'Returned'].includes(s)).map(s => <button key={s} className={'btn sm' + (s === 'Confirmed' ? ' ghost' : '')} onClick={() => s === 'Shipped' ? setShip({ courier: couriers[0].name, tracking: '' }) : act(s)}>{ACTION[s]}</button>)}
-            {o.method === 'cod' && o.status === 'Delivered' && o.payment === 'Due on delivery' && <button className="btn sm" onClick={() => run(() => collectCash(o.id, actor))}>Mark cash collected</button>}
           </div>
           {ship && <form className="ship-box" onSubmit={e => { e.preventDefault(); act('Shipped', ship); }}>
             <label>Courier<select value={ship.courier} onChange={e => setShip({ ...ship, courier: e.target.value })}>{couriers.map(c => <option key={c.name}>{c.name}</option>)}</select></label>
@@ -80,6 +80,7 @@ function OrderDrawer({ o, actor, couriers, close }) {
             <div className="row">{next.filter(s => ['Cancelled', 'Returned'].includes(s)).map(s => <button key={s} className="btn sm danger" onClick={() => confirm(`${ACTION[s]} for ${o.id}? Stock goes back and the payment is refunded (mock).`) && act(s, { note: reason })}>{ACTION[s]}</button>)}</div>
           </div>}
         </>}
+        {o.method === 'cod' && o.status === 'Delivered' && o.payment === 'Due on delivery' && <div className="row"><button className="btn sm" onClick={() => run(() => collectCash(o.id, actor))}>Mark cash collected</button></div>}
         {!next.some(s => ['Cancelled', 'Returned'].includes(s)) && !['Cancelled', 'Returned'].includes(o.status) && actor.role === 'staff' && <p className="muted small">Cancellations and returns need a manager.</p>}
         {error && <p className="notice err">{error}</p>}
 
@@ -91,6 +92,11 @@ function OrderDrawer({ o, actor, couriers, close }) {
         <div className="sum-row"><span>Delivery ({o.delivery})</span><span>{money(o.shipping)}</span></div>
         <div className="sum-row total"><span>Total</span><span>{money(o.total)}</span></div>
         {o.installments && <p className="muted small">Instalments: {o.installments.map(money).join(' · ')}</p>}
+        {['Shipped', 'Out for delivery'].includes(o.status) && o.shipment && <div className="ship-box sim">
+          <p className="small"><b>Courier simulator</b>: pretend {o.shipment.courier}’s system sent a status update.</p>
+          <div className="row wrap">{[['hub', 'Arrived at hub'], ['out', 'Out for delivery'], ['failed', 'Failed attempt'], ['delivered', 'Delivered']].filter(([k]) => !(k === 'out' && o.status === 'Out for delivery')).map(([k, l]) => <button key={k} className="btn sm ghost" onClick={() => run(() => courierScan(o.id, k))}>{l}</button>)}</div>
+        </div>}
+        {o.refunded > 0 && <p className="small">Refunded so far: <b>{money(o.refunded)}</b></p>}
         {o.shipment && <p className="small">Shipped with <b>{o.shipment.courier}</b> · {o.shipment.tracking}{o.shipment.url && <> · <a className="link" href={o.shipment.url} target="_blank" rel="noreferrer">courier page ↗</a></>}</p>}
         <div className="row wrap"><Link className="btn sm ghost" to={'/dashboard/slips?ids=' + o.id} target="_blank"><Icon name="print" size={14} /> Packing slip</Link><Link className="btn sm ghost" to={trackLink(o)} target="_blank">Customer tracking page</Link></div>
 

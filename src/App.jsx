@@ -12,11 +12,13 @@ import { Story, Care, Journal, Post } from './pages/site/Pages.jsx';
 import Contact from './pages/site/Contact.jsx';
 import { Pay, OrderStatus, Track } from './pages/site/Orders.jsx';
 import Login from './pages/site/Login.jsx';
+import Wishlist from './pages/site/Wishlist.jsx';
 import Account from './pages/account/Account.jsx';
 import Overview from './pages/dash/Overview.jsx';
 import Orders, { Slips } from './pages/dash/Orders.jsx';
 import Products from './pages/dash/Products.jsx';
 import { Customers, Payments, Inbox, Outbox, Discounts, Team, Settings } from './pages/dash/Pages.jsx';
+import { Returns, Reviews, Reports } from './pages/dash/Advanced.jsx';
 
 function Guard({ perm, role, children }) {
   const { user } = useAuth(), loc = useLocation();
@@ -45,6 +47,7 @@ export default function App() {
         <Route path="contact" element={<Contact />} />
         <Route path="pay/:id" element={<Pay />} />
         <Route path="order/:id" element={<OrderStatus />} />
+        <Route path="wishlist" element={<Wishlist />} />
         <Route path="track" element={<Track />} />
         <Route path="track/:id" element={<Track />} />
         <Route path="login" element={<Login />} />
@@ -58,6 +61,9 @@ export default function App() {
         {dash('products', 'products', Products)}
         {dash('customers', 'customers', Customers)}
         {dash('payments', 'payments', Payments)}
+        {dash('returns', 'orders', Returns)}
+        {dash('reviews', 'products', Reviews)}
+        {dash('reports', 'customers', Reports)}
         {dash('discounts', 'products', Discounts)}
         {dash('inbox', 'inbox', Inbox)}
         {dash('outbox', 'inbox', Outbox)}

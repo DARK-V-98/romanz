@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom';
-import { money, img, addToCart, FLOW, COLLECTION_FLOW, publicEvents } from '../lib/store.js';
+import { useStore } from '../lib/hooks.js';
+import { useAuth } from '../lib/auth.jsx';
+import { money, img, addToCart, FLOW, COLLECTION_FLOW, publicEvents, ratingOf, wishlist, toggleWish } from '../lib/store.js';
 
 const paths = {
   bag: <><path d="M4 8h16l1 14H3L4 8Z" /><path d="M8 10V6a4 4 0 0 1 8 0v4" /></>,
@@ -23,25 +25,43 @@ const paths = {
   upload: <><path d="M12 16V4M7 9l5-5 5 5" /><path d="M4 16v4h16v-4" /></>,
   print: <><path d="M6 9V3h12v6" /><rect x="3" y="9" width="18" height="8" rx="1" /><path d="M7 14h10v7H7z" /></>,
   send: <path d="M3 11 21 3l-8 18-2-8-8-2Z" />,
-  layers: <><path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m3 13 9 5 9-5" /></>
+  layers: <><path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m3 13 9 5 9-5" /></>,
+  heart: <path d="M12 20s-7.5-4.6-9.2-9.4C1.6 7.2 3.8 4 7.2 4c2 0 3.6 1.2 4.8 3 1.2-1.8 2.8-3 4.8-3 3.4 0 5.6 3.2 4.4 6.6C19.5 15.4 12 20 12 20Z" />,
+  bell: <><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4l2-2Z" /><path d="M10 21h4" /></>,
+  chart: <><path d="M4 20V4M4 20h16" /><path d="M8 16v-4M12 16V8M16 16v-6" /></>,
+  undo: <><path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></>,
+  star: <path d="m12 3 2.7 5.8 6.3.7-4.7 4.3 1.3 6.2L12 17l-5.6 3 1.3-6.2L3 9.5l6.3-.7L12 3Z" />,
+  command: <path d="M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6Z" />
 };
 export const Icon = ({ name, size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>
 );
 
+export const Stars = ({ value, size = 14, label = true }) => (
+  <span className="stars" role="img" aria-label={label ? value + ' out of 5 stars' : undefined} style={{ '--pct': (value / 5 * 100) + '%', fontSize: size }}><span>★★★★★</span></span>
+);
+
+export function WishButton({ id, className = '' }) {
+  const { data } = useStore(), { user } = useAuth();
+  const on = wishlist(user?.id, data).includes(id);
+  return <button type="button" className={'wish ' + (on ? 'on ' : '') + className} aria-pressed={on} aria-label={on ? 'Remove from wishlist' : 'Save to wishlist'} title={on ? 'Saved' : 'Save to wishlist'} onClick={e => { e.preventDefault(); toggleWish(id, user?.id); }}><Icon name="heart" size={18} /></button>;
+}
+
 export function ProductCard({ p }) {
-  const out = p.stock <= 0, first = p.variants.find(v => v.active && v.stock > 0);
+  const { data } = useStore(), out = p.stock <= 0, first = p.variants.find(v => v.active && v.stock > 0), r = ratingOf(data, p.id);
   return (
     <article className="pcard">
       <Link to={'/shop/' + p.id} className="pcard-img">
         <img src={img(p.image)} alt={p.name} loading="lazy" />
         <span className="pcard-tag">{out ? 'Sold out' : p.compareAt ? 'Sale' : p.tag}</span>
+        <WishButton id={p.id} className="on-img" />
       </Link>
       <div className="pcard-body">
         <div>
           <p className="pcard-cat">{p.category}</p>
           <h3><Link to={'/shop/' + p.id}>{p.name}</Link></h3>
           <p className="pcard-price">{money(p.price)}{p.compareAt && <s className="muted"> {money(p.compareAt)}</s>}</p>
+          {r.count > 0 && <p className="pcard-rating"><Stars value={r.avg} size={12} /> <small className="muted">{r.avg} ({r.count})</small></p>}
         </div>
         <button className="icon-btn" disabled={out} onClick={() => first && addToCart(p.id, first.option)} aria-label={'Add ' + p.name + ' to bag'} title={first ? 'Quick add · ' + first.option : 'Sold out'}><Icon name="bag" size={18} /></button>
       </div>

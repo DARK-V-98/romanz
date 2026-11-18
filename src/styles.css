@@ -165,7 +165,8 @@ details { border-bottom: 1px solid var(--line); padding: 14px 0 } summary { curs
 .role-tag { font-size: 12px; padding: 4px 12px; border-radius: 999px; font-weight: 600 }
 .dash-page { padding: 30px 32px 60px; max-width: 1320px }
 .dash-head { display: flex; justify-content: space-between; align-items: start; gap: 16px; margin-bottom: 22px } .dash-head h1 { font-size: 40px; margin: 0 } .dash-head p { margin: 4px 0 0 }
-.dash-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px }
+.dash-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px } .dash-grid > * { min-width: 0 }
+@media (max-width: 600px) { .bars { gap: 3px } .bar-col span { font-size: 9px } }
 .card { background: #fff; border: 1px solid var(--line); border-radius: var(--r); padding: 22px; margin-bottom: 16px } .dash-grid .card { margin: 0 }
 .card h3 { font-size: 22px } .card-head { display: flex; justify-content: space-between; align-items: center; gap: 12px } .card-head a { color: var(--gold-dark) }
 .bars { display: flex; align-items: end; gap: 8px; height: 220px; padding-top: 10px }
@@ -232,6 +233,36 @@ label.check.inline { margin: 0 }
 @media print { .no-print { display: none } body { background: #fff } .slip { border: 0; margin: 0 } }
 @media (max-width: 1000px) { .queue { grid-template-columns: repeat(3, 1fr) } }
 @media (max-width: 600px) { .slip-grid { grid-template-columns: 1fr } .queue { grid-template-columns: repeat(2, 1fr) } .row.end { justify-content: flex-start } }
+
+/* v5: reviews, wishlist, alerts, returns, bell, palette */
+.stars { position: relative; display: inline-block; line-height: 1; letter-spacing: 2px; color: var(--line); white-space: nowrap }
+.stars span { background: linear-gradient(90deg, var(--gold) var(--pct), var(--line) var(--pct)); -webkit-background-clip: text; background-clip: text; color: transparent }
+.pcard-img { position: relative } .pcard-rating { margin: 2px 0 0; display: flex; align-items: center; gap: 6px }
+.wish { display: inline-grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: var(--ink); transition: transform .15s, background .2s } .wish:hover { transform: scale(1.08) } .wish.on { color: var(--red) } .wish.on svg { fill: currentColor }
+.wish.on-img { position: absolute; top: 10px; right: 10px; background: rgba(255, 255, 255, .92) } .wish.big { border: 1px solid var(--line); width: 46px; height: 46px; flex-shrink: 0 }
+.title-row { align-items: start } .title-row h1 { margin-bottom: .2em } .rating-link { display: inline-flex; gap: 8px; align-items: center; margin-bottom: 10px }
+.alert-box { background: var(--cream); border-radius: 12px; padding: 14px 16px; margin: 10px 0; font-size: 14px } .alert-box .row { margin: 10px 0 0 } .alert-box input { margin: 0; border-radius: 999px }
+.reviews { padding-top: 60px } .review-grid { display: grid; grid-template-columns: 260px 1fr; gap: 40px; align-items: start }
+.dist { position: sticky; top: 100px } .dist .big-num { display: block; line-height: 1 } .dist .hbar { grid-template-columns: 30px 1fr 24px; padding: 4px 0 } .dist select { margin-top: 14px }
+.review-list { list-style: none; padding: 0; margin: 0 } .review-list li { padding: 20px 0; border-bottom: 1px solid var(--line) } .review-list p { margin: 6px 0 8px }
+.rtitle { text-transform: none; letter-spacing: 0; font-size: 16px; color: var(--ink); margin: 8px 0 0 } .verified { color: var(--green) }
+.review-form { margin-bottom: 24px } .star-input { border: 0; padding: 0; margin: 0 0 14px } .star-input legend { font-size: 13px; font-weight: 500; margin-bottom: 6px }
+.star-input button { font-size: 30px; color: var(--line); padding: 0 2px; transition: color .15s } .star-input button.on { color: var(--gold) } .star-input button:hover { color: var(--gold-dark) }
+.review-mod p { margin: 8px 0 12px } .review-mod .row input { flex: 1; min-width: 160px }
+.ret-lines li { flex-wrap: wrap } .ret-lines select { width: auto; margin: 0 } .modal-card .chips { margin: 12px 0 }
+.rs-requested { background: #f3e6f3; color: #6f3a73 } .rs-approved { background: #e3ecf7; color: #2e5684 } .rs-rejected { background: #f6e1de; color: #8a2f25 } .rs-received { background: #e3f0e7; color: #2b6142 }
+.ship-box.sim { background: #f1f5f8 } .mt { margin-top: 26px }
+.bell-wrap { position: relative } .bell-dot { position: absolute; top: 2px; right: 0; background: var(--red); color: #fff; font-size: 10px; min-width: 17px; height: 17px; border-radius: 9px; display: grid; place-items: center; padding: 0 4px }
+.bell-menu { position: absolute; right: 0; top: 46px; width: min(360px, 88vw); background: #fff; border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 14px; z-index: 40; max-height: 70vh; overflow: auto }
+.bell-item { display: block; width: 100%; text-align: left; padding: 10px; border-radius: 10px; font-size: 13px } .bell-item:hover { background: var(--paper) } .bell-item small { display: block; color: var(--muted); font-size: 11px } .bell-item.unread span::before { content: '● '; color: var(--gold) }
+.toast { position: fixed; right: 20px; bottom: 20px; z-index: 80; background: var(--ink); color: #fff; padding: 14px 18px; border-radius: 12px; box-shadow: var(--shadow); display: flex; gap: 10px; align-items: center; font-size: 14px; max-width: min(380px, calc(100vw - 32px)); text-align: left; animation: slide .25s ease-out }
+.palette-hint { display: inline-flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 12px; color: var(--muted) } .palette-hint:hover { border-color: var(--ink); color: var(--ink) }
+kbd { font: 11px ui-monospace, monospace; background: var(--cream); border-radius: 4px; padding: 1px 5px }
+.palette-wrap { place-items: start center; padding-top: 12vh } .palette { width: min(620px, 100%); background: #fff; border-radius: 16px; box-shadow: var(--shadow); padding: 12px; overflow: hidden }
+.palette input { margin: 0; font-size: 16px; padding: 14px 16px; border-radius: 10px } .palette ul { list-style: none; padding: 0; margin: 8px 0 0; max-height: 50vh; overflow: auto }
+.palette li button { display: flex; gap: 12px; align-items: baseline; width: 100%; text-align: left; padding: 10px 12px; border-radius: 10px; font-size: 14px } .palette li button.on { background: var(--cream) }
+.palette li small { width: 64px; flex-shrink: 0; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em } .palette-foot { margin: 8px 6px 2px }
+@media (max-width: 1000px) { .review-grid { grid-template-columns: 1fr } .dist { position: static } .palette-hint { display: none } }
 
 /* responsive */
 @media (max-width: 1000px) {

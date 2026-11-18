@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useStore, useExpiryJob } from '../lib/hooks.js';
 import { useAuth, homeFor } from '../lib/auth.jsx';
 import { Icon } from './ui.jsx';
+import { wishlist } from '../lib/store.js';
 
 const NAV = [['/shop', 'Shop'], ['/story', 'Our story'], ['/journal', 'Journal'], ['/care', 'Care'], ['/track', 'Track order'], ['/contact', 'Contact']];
 
@@ -10,7 +11,7 @@ export default function SiteLayout() {
   const { data, bag } = useStore(), { user } = useAuth(), [open, setOpen] = useState(false), loc = useLocation();
   useEffect(() => setOpen(false), [loc.pathname]);
   useExpiryJob();
-  const count = bag.reduce((a, i) => a + i.qty, 0);
+  const count = bag.reduce((a, i) => a + i.qty, 0), saved = wishlist(user?.id, data).length;
   return (
     <>
       <div className="announce">{data.settings.announcement}</div>
@@ -25,6 +26,7 @@ export default function SiteLayout() {
         </nav>
         <div className="header-actions">
           <Link to={user ? homeFor(user) : '/login'} className="icon-link" aria-label={user ? 'My account' : 'Sign in'}><Icon name="user" /><span className="desk-only">{user ? user.name.split(' ')[0] : 'Sign in'}</span></Link>
+          <Link to="/wishlist" className="icon-link" aria-label={'Wishlist, ' + saved + ' saved'}><Icon name="heart" />{saved > 0 && <span className="count">{saved}</span>}</Link>
           <Link to="/bag" className="icon-link" aria-label="Bag"><Icon name="bag" /><span className="count">{count}</span></Link>
         </div>
       </header>

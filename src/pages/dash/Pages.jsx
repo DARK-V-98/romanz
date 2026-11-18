@@ -1,13 +1,14 @@
 import { Fragment, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useStore } from '../../lib/hooks.js';
 import { useAuth, ROLES, actorOf } from '../../lib/auth.jsx';
 import { money, customers, markRead, replyMessage, saveSettings, saveDiscount, inviteMember, setMember, expireUnpaid, reset, load, isRevenue } from '../../lib/store.js';
 import { fmtDate, fmtTime, Icon } from '../../components/ui.jsx';
 
 export function Customers() {
-  const { data } = useStore(), [q, setQ] = useState(''), [open, setOpen] = useState(null);
+  const { data } = useStore(), [q, setQ] = useState(''), [params, setParams] = useSearchParams(), open = params.get('open'), setOpen = e => setParams(e ? { open: e } : {}, { replace: true });
   const list = customers(data).filter(c => (c.name + c.email + c.city + (c.phone || '')).toLowerCase().includes(q.toLowerCase()));
-  const c = list.find(c => c.email === open), orders = c ? data.orders.filter(o => o.customer.email === c.email) : [];
+  const c = customers(data).find(c => c.email === open), orders = c ? data.orders.filter(o => o.customer.email === c.email) : [];
   return (
     <div className="dash-page">
       <div className="dash-head"><div><h1>Customers</h1><p className="muted">{list.length} people · {list.filter(c => c.account).length} with accounts, the rest checked out as guests</p></div></div>
@@ -167,7 +168,7 @@ export function Settings() {
   const { data } = useStore(), { user } = useAuth(), [form, setForm] = useState(data.settings), [msg, setMsg] = useState(null);
   const f = (k, num) => ({ value: form[k], onChange: e => setForm({ ...form, [k]: num ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value }) });
   const setC = (i, k, v) => setForm({ ...form, couriers: form.couriers.map((c, j) => j === i ? { ...c, [k]: v } : c) });
-  const save = e => { e.preventDefault(); try { saveSettings({ ...form, shippingFee: Number(form.shippingFee), freeShippingOver: Number(form.freeShippingOver), reservationMinutes: Number(form.reservationMinutes) }, actorOf(user)); setMsg(['ok', 'Saved. The store uses the new values straight away.']); } catch (err) { setMsg(['err', err.message]); } };
+  const save = e => { e.preventDefault(); try { saveSettings({ ...form, shippingFee: Number(form.shippingFee), freeShippingOver: Number(form.freeShippingOver), reservationMinutes: Number(form.reservationMinutes), returnDays: Number(form.returnDays) }, actorOf(user)); setMsg(['ok', 'Saved. The store uses the new values straight away.']); } catch (err) { setMsg(['err', err.message]); } };
   const pending = data.orders.filter(o => o.status === 'Pending payment').length;
   return (
     <div className="dash-page">
@@ -181,6 +182,8 @@ export function Settings() {
         <label>Delivery fee (LKR)<input type="number" min="0" {...f('shippingFee', true)} /></label>
         <label>Free delivery over (LKR, 0 = off)<input type="number" min="0" {...f('freeShippingOver', true)} /></label>
         <label>Payment window (minutes)<input type="number" min="1" max="1440" {...f('reservationMinutes', true)} /></label>
+        <label>Return window (days after delivery)<input type="number" min="0" max="90" {...f('returnDays', true)} /></label>
+        <label className="check span2"><input type="checkbox" checked={!!form.autoCourier} onChange={e => setForm({ ...form, autoCourier: e.target.checked })} /> Courier simulator: move new shipped orders along automatically (hub → out for delivery → delivered, about every 15 s)</label>
         <p className="muted small">Unpaid card / Koko orders hold their stock for this long, then cancel automatically.</p>
         <h3 className="span2">Couriers</h3>
         <div className="span2 stack">

@@ -205,6 +205,107 @@ t('inbox and customers', () => {
   assert.ok(S.lowStock().length > 0);
 });
 
+
+t('reviews: verified, moderation, rating', () => {
+  const st = S.load(), o = st.orders.find(o => o.status === 'Delivered' && st.products.find(p => p.id === o.lines[0].id)?.active), pid = o.lines[0].id;
+  assert.ok(st.reviews.length > 5 && st.reviews.some(r => r.status === 'pending'));
+  assert.throws(() => S.submitReview({ productId: pid, rating: 6, body: 'Lovely piece really', name: 'A', email: 'a@x.com' }), /star/);
+  const r = S.submitReview({ productId: pid, rating: 5, title: 'Great', body: 'Absolutely lovely piece', name: 'Fresh Buyer', email: 'fresh@example.com' });
+  assert.equal(r.status, 'pending'); assert.equal(r.verified, false);
+  assert.throws(() => S.submitReview({ productId: pid, rating: 4, body: 'Second review here', name: 'Fresh Buyer', email: 'fresh@example.com' }), /already/);
+  const before = S.ratingOf(S.load(), pid).count;
+  assert.throws(() => S.moderateReview(r.id, 'published', staff), /managers/);
+  S.moderateReview(r.id, 'published', manager);
+  assert.equal(S.ratingOf(S.load(), pid).count, before + 1);
+  S.replyReview(r.id, 'Thank you!', manager); assert.equal(S.load().outbox[0].to, 'fresh@example.com');
+  const buyer = S.load().orders.find(x => x.status === 'Delivered' && S.load().products.find(p => p.id === x.lines[0].id)?.active && !S.load().reviews.some(r => r.email === x.customer.email && r.productId === x.lines[0].id));
+  assert.equal(S.submitReview({ productId: buyer.lines[0].id, rating: 4, body: 'Bought and loved it', name: buyer.customer.name, email: buyer.customer.email.toUpperCase() }).verified, true, 'verified buyer');
+  assert.ok(S.load().notices.some(n => n.type === 'review'));
+});
+
+t('wishlist and recently viewed', () => {
+  S.toggleWish('luna-hoops'); S.toggleWish('aurora-ring');
+  assert.deepEqual(S.wishlist(null), ['aurora-ring', 'luna-hoops']);
+  S.toggleWish('luna-hoops'); assert.deepEqual(S.wishlist(null), ['aurora-ring']);
+  S.mergeGuestWishlist('u4');
+  assert.deepEqual(S.wishlist(null), []); assert.ok(S.wishlist('u4').includes('aurora-ring'));
+  S.toggleWish('aurora-ring', 'u4'); assert.ok(!S.wishlist('u4').includes('aurora-ring'));
+  S.markViewed('a'); S.markViewed('b'); S.markViewed('a'); assert.deepEqual(S.recentlyViewed().slice(0, 2), ['a', 'b']);
+});
+
+t('back-in-stock alerts fire once on restock', () => {
+  const p = S.load().products.find(p => p.id === 'aurora-rose'), v = p.variants[2];
+  assert.equal(v.stock, 0);
+  assert.equal(S.subscribeAlert(p.id, v.option, 'wait@example.com'), true);
+  assert.equal(S.subscribeAlert(p.id, v.option, 'wait@example.com'), false, 'dedup');
+  assert.throws(() => S.subscribeAlert('luna-bold', 'Pair', 'x@example.com'), /in stock/);
+  const sent = S.load().outbox.length;
+  S.adjustStock(p.id, v.sku, 3, 'restock', '', manager);
+  const mails = S.load().outbox.slice(0, S.load().outbox.length - sent);
+  assert.ok(mails.some(m => m.to === 'wait@example.com' && m.subject.includes('back in stock')));
+  S.adjustStock(p.id, v.sku, 1, 'restock', '', manager);
+  assert.equal(S.load().outbox.filter(m => m.to === 'wait@example.com' && m.subject.includes('back in stock')).length, 1);
+});
+
+t('returns: partial refund, exchange, rules', () => {
+  const p1 = S.load().products.find(p => p.id === 'golden-hour'), p2 = S.load().products.find(p => p.id === 'link-bracelet');
+  const cust = { name: 'Ret Urner', email: 'ret@example.com', address: '1 Lane', city: 'Galle' };
+  const o = S.place({ items: [{ id: p1.id, option: '40 cm', qty: 2 }, { id: p2.id, option: '16 cm', qty: 1 }], delivery: 'standard', method: 'cod', customer: cust, token: 'ret-1' });
+  assert.equal(S.returnWindow(S.load().orders.find(x => x.id === o.id)).ok, false);
+  for (const st of ['Packed']) S.setStatus(o.id, st, {}, staff);
+  S.setStatus(o.id, 'Shipped', { courier: 'Domex', tracking: 'LK555000' }, staff);
+  S.courierScan(o.id, 'hub'); S.courierScan(o.id, 'out'); S.courierScan(o.id, 'failed');
+  assert.equal(S.load().orders.find(x => x.id === o.id).status, 'Shipped');
+  S.courierScan(o.id, 'delivered');
+  const hoops = S.load().orders.find(x => x.id === o.id).lines.find(l => l.id === p1.id);
+  assert.throws(() => S.requestReturn({ orderId: o.id, email: 'other@example.com', items: [{ sku: hoops.sku, qty: 1 }], reason: 'Changed my mind' }), /not found/);
+  assert.throws(() => S.requestReturn({ orderId: o.id, email: cust.email, items: [{ sku: hoops.sku, qty: 3 }], reason: 'Changed my mind' }), /at most 2/);
+  const r = S.requestReturn({ orderId: o.id, email: cust.email, items: [{ sku: hoops.sku, qty: 1 }], reason: 'Changed my mind' });
+  assert.throws(() => S.requestReturn({ orderId: o.id, email: cust.email, items: [{ sku: hoops.sku, qty: 1 }], reason: 'x' }), /in progress/);
+  assert.throws(() => S.receiveReturn(r.id, staff), /approved/);
+  assert.throws(() => S.decideReturn(r.id, 'approved', '', staff), /managers/);
+  assert.throws(() => S.decideReturn(r.id, 'rejected', '', manager), /reason/);
+  S.decideReturn(r.id, 'approved', '', manager);
+  const stock = S.load().products.find(p => p.id === p1.id).variants[0].stock;
+  const done = S.receiveReturn(r.id, staff);
+  assert.equal(done.refund, hoops.price);
+  const after = S.load().orders.find(x => x.id === o.id);
+  assert.equal(after.payment, 'Partially refunded (mock)'); assert.equal(after.status, 'Delivered');
+  assert.equal(S.load().products.find(p => p.id === p1.id).variants[0].stock, stock + 1);
+  // exchange the bracelet for another length
+  const br = after.lines.find(l => l.id === p2.id);
+  const x = S.requestReturn({ orderId: o.id, email: cust.email, type: 'exchange', items: [{ sku: br.sku, qty: 1, toOption: '18 cm' }], reason: 'Wrong size' });
+  S.decideReturn(x.id, 'approved', '', manager);
+  const ex = S.receiveReturn(x.id, staff);
+  const rep = S.load().orders.find(z => z.id === ex.exchangeOrderId);
+  assert.equal(rep.total, 0); assert.equal(rep.lines[0].option, '18 cm'); assert.equal(rep.status, 'Confirmed');
+  // returning the last hoop closes the order as Returned
+  const last = S.requestReturn({ orderId: o.id, email: cust.email, items: [{ sku: hoops.sku, qty: 1 }], reason: 'Gift not needed' });
+  S.decideReturn(last.id, 'approved', '', manager); S.receiveReturn(last.id, staff);
+  assert.equal(S.load().orders.find(z => z.id === o.id).payment, 'Partially refunded (mock)', 'bracelet was exchanged, not refunded');
+});
+
+t('auto courier and notices', () => {
+  const cust = { name: 'Auto', email: 'auto@example.com', address: '1 Lane', city: 'Kandy' };
+  const o = S.place({ items: [{ id: 'luna-bold', option: 'Pair', qty: 1 }], delivery: 'standard', method: 'cod', customer: cust, token: 'auto-1' });
+  S.setStatus(o.id, 'Packed', {}, staff); S.setStatus(o.id, 'Shipped', { courier: 'Pronto', tracking: 'PR123456' }, staff);
+  assert.equal(S.courierTick(Date.now() + 60000), 0, 'off by default');
+  S.saveSettings({ autoCourier: true }, admin);
+  for (let i = 0; i < 3; i++) S.courierTick(Date.now() + 60000 * (i + 1));
+  assert.equal(S.load().orders.find(x => x.id === o.id).status, 'Delivered');
+  const n = S.load().notices; assert.ok(n.some(x => x.type === 'order'));
+  S.markNotices('u1'); assert.ok(S.load().notices.every(x => x.readBy.includes('u1')));
+});
+
+t('v4 data is migrated, not wiped', () => {
+  const cur = S.load(); const old = { ...cur, version: 4 }; delete old.reviews; delete old.alerts; delete old.returns; delete old.notices;
+  old.settings = { ...cur.settings }; delete old.settings.returnDays; old.users = cur.users.map(({ wishlist, ...u }) => u);
+  S.reset(); localStorage.setItem('romanz-demo-store-v4', JSON.stringify(old));
+  const m = S.load();
+  assert.equal(m.version, 5); assert.equal(m.orders.length, cur.orders.length, 'orders kept');
+  assert.deepEqual(m.reviews, []); assert.equal(m.settings.returnDays, 14); assert.ok(m.users.every(u => Array.isArray(u.wishlist)));
+});
+
 t('reset', () => {
   S.reset(); assert.equal(S.load().orders.length, start.orders.length); assert.equal(S.mediaUsage().count, 0);
 });

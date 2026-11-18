@@ -1,6 +1,6 @@
 /* Mock login backed by the users table in the local store. Passwords are demo values checked in the browser: not real authentication. */
 import { createContext, useContext, useEffect, useState } from 'react';
-import { authenticate, register as registerUser, load, subscribe, DEMO_USERS } from './store.js';
+import { authenticate, register as registerUser, load, subscribe, mergeGuestWishlist, DEMO_USERS } from './store.js';
 
 export const ROLES = {
   admin: { label: 'Administrator', can: ['overview', 'orders', 'products', 'customers', 'payments', 'inbox', 'team', 'settings'] },
@@ -19,7 +19,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => find(id));
   // Re-read the account whenever the store changes, so role changes and deactivation apply immediately.
   useEffect(() => { setUser(find(id)); return subscribe(() => setUser(find(id))); }, [id]);
-  const start = u => { localStorage.setItem(KEY, u.id); setId(u.id); setUser(u); return u; };
+  const start = u => { localStorage.setItem(KEY, u.id); mergeGuestWishlist(u.id); setId(u.id); setUser(u); return u; };
   const login = (email, password) => start(authenticate(email, password));
   const register = input => start(registerUser(input));
   const logout = () => { localStorage.removeItem(KEY); setId(null); setUser(null); };

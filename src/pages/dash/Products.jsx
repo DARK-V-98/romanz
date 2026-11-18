@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useStore } from '../../lib/hooks.js';
 import { useAuth, actorOf } from '../../lib/auth.jsx';
 import { money, img, saveProduct, duplicateProduct, setProductStatus, adjustStock, saveCategory, saveMedia, mediaUsage, planImport, importProducts, suggestSku, IMAGES, OPTION_PRESETS, PRODUCT_STATUSES, CSV_TEMPLATE } from '../../lib/store.js';
@@ -9,12 +10,13 @@ const STATUS_BADGE = { active: 'b-delivered', draft: 'b-processing', archived: '
 const blank = cat => ({ name: '', category: cat, price: 5000, compareAt: '', status: 'draft', featured: false, images: [], description: '', finish: 'Gold tone', tag: 'New arrival', variants: [] });
 
 export default function Products() {
-  const [tab, setTab] = useState('products');
+  const [params, setParams] = useSearchParams(), tab = params.get('tab') || 'products', setTab = t => setParams(t === 'products' ? {} : { tab: t }, { replace: true });
   return (
     <div className="dash-page">
-      <div className="chips tabs">{[['products', 'Products'], ['inventory', 'Inventory log'], ['categories', 'Categories'], ['import', 'Import CSV']].map(([k, l]) => <button key={k} className={'chip' + (tab === k ? ' on' : '')} onClick={() => setTab(k)}>{l}</button>)}</div>
+      <div className="chips tabs">{[['products', 'Products'], ['inventory', 'Inventory log'], ['waitlist', 'Waitlist'], ['categories', 'Categories'], ['import', 'Import CSV']].map(([k, l]) => <button key={k} className={'chip' + (tab === k ? ' on' : '')} onClick={() => setTab(k)}>{l}</button>)}</div>
       {tab === 'products' && <ProductList />}
       {tab === 'inventory' && <InventoryLog />}
+      {tab === 'waitlist' && <Waitlist />}
       {tab === 'categories' && <Categories />}
       {tab === 'import' && <ImportCsv done={() => setTab('products')} />}
     </div>
@@ -26,6 +28,12 @@ function ProductList() {
   const [q, setQ] = useState(''), [status, setStatus] = useState('all'), [cat, setCat] = useState('all'), [edit, setEdit] = useState(null), [stock, setStock] = useState(null), [error, setError] = useState('');
   const list = data.products.filter(p => (status === 'all' || p.status === status) && (cat === 'all' || p.category === cat) && (p.name + p.category + p.variants.map(v => v.sku).join(' ')).toLowerCase().includes(q.toLowerCase()));
   const value = data.products.filter(p => p.status !== 'archived').reduce((a, p) => a + p.variants.reduce((x, v) => x + (v.price ?? p.price) * v.stock, 0), 0);
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    const id = params.get('edit'), p = id && data.products.find(p => p.id === id);
+    if (p) setEdit({ ...p, compareAt: p.compareAt ?? '' }); else if (params.get('new')) setEdit(blank(data.categories[0].slug));
+    if (id || params.get('new')) setParams({}, { replace: true });
+  }, [params.get('edit'), params.get('new')]);
   const run = fn => { setError(''); try { fn(); } catch (e) { setError(e.message); } };
   const catName = slug => data.categories.find(c => c.slug === slug)?.name || slug;
   return <>
@@ -223,5 +231,21 @@ function ImportCsv({ done }) {
       <div className="row"><button className="btn sm" disabled={!plan.items.some(i => i.ok)} onClick={() => { try { setResult(importProducts(text, actor)); setText(''); } catch (e) { setResult({ errors: [e.message], created: 0, updated: 0 }); } }}>Import {plan.items.filter(i => i.ok).length} piece(s)</button></div>
     </div>}
     {result && <div className="card"><p className="notice ok">{result.created} created · {result.updated} updated{result.errors.length ? ` · ${result.errors.length} skipped` : ''}.</p><button className="btn sm" onClick={done}>View products</button></div>}
+  </>;
+}
+
+function Waitlist() {
+  const { data } = useStore(), [show, setShow] = useState('waiting');
+  const names = Object.fromEntries(data.products.map(p => [p.id, p]));
+  const list = data.alerts.filter(a => show === 'all' || (show === 'waiting' ? !a.notified : a.notified));
+  const demand = Object.values(data.alerts.filter(a => !a.notified).reduce((m, a) => { (m[a.sku] ||= { ...a, n: 0 }).n++; return m; }, {})).sort((a, b) => b.n - a.n);
+  return <>
+    <div className="dash-head"><div><h1>Waitlist</h1><p className="muted">Customers who asked to hear when a sold-out size comes back. Restock it and they’re emailed automatically, once.</p></div></div>
+    {demand.length > 0 && <div className="card"><h3>Most wanted</h3><div className="vchips">{demand.slice(0, 10).map(d => <span key={d.sku} className="vchip out">{names[d.productId]?.name} · {d.option} <b>{d.n}</b></span>)}</div></div>}
+    <div className="toolbar"><div className="chips">{[['waiting', 'Waiting'], ['sent', 'Notified'], ['all', 'All']].map(([k, l]) => <button key={k} className={'chip' + (show === k ? ' on' : '')} onClick={() => setShow(k)}>{l}</button>)}</div></div>
+    <div className="card"><div className="table-wrap"><table>
+      <thead><tr><th>Piece</th><th>Option</th><th>Email</th><th>Asked</th><th>Current stock</th><th>Notified</th></tr></thead>
+      <tbody>{list.map(a => { const p = names[a.productId], v = p?.variants.find(v => v.sku === a.sku); return <tr key={a.id}><td><span className="cell-img">{p && <img src={img(p.image)} alt="" />}<b>{p?.name || a.productId}</b></span></td><td>{a.option}</td><td>{a.email}</td><td className="small">{fmtTime(a.date)}</td><td className={v?.stock ? 'up' : 'down'}>{v?.stock ?? '—'}</td><td className="small">{a.notified ? fmtTime(a.notified) : '—'}</td></tr>; })}</tbody>
+    </table>{!list.length && <p className="empty">Nobody on this list.</p>}</div></div>
   </>;
 }

@@ -4,7 +4,7 @@
    authentication service: passwords and the "merchant secret" below are public demo values. */
 import { PRODUCTS } from './catalog.js';
 
-const KEY = 'romanz-demo-store-v4', BAG = 'romanz-bag-v1', MEDIA = 'romanz-media-v1', EVT = 'romanz:change';
+const KEY = 'romanz-demo-store-v4', BAG = 'romanz-bag-v1', MEDIA = 'romanz-media-v1', WISH = 'romanz-wish-v1', SEEN = 'romanz-seen-v1', EVT = 'romanz:change';
 const clone = x => JSON.parse(JSON.stringify(x));
 const nowIso = () => new Date().toISOString();
 
@@ -132,21 +132,50 @@ function sampleState() {
     { code: 'AVURUDU', type: 'percent', value: 15, min: 5000, maxUses: 0, uses: 31, active: false, endsAt: '2026-04-30' }
   ];
   return {
-    version: 4, seq: 10544, products: clone(defaults), categories: clone(DEFAULT_CATEGORIES), orders, transactions, movements, messages, discounts,
-    users: clone(DEMO_USERS).map(u => ({ phone: '', addresses: [], active: true, createdAt: '2024-03-01T00:00:00.000Z', ...u })),
-    outbox: [], audit: [],
-    settings: { announcement: 'Complimentary gift wrapping on every order · Island-wide delivery', supportEmail: 'hello@romanz.lk', supportPhone: '077 000 0000', shippingFee: SHIPPING, freeShippingOver: 0, reservationMinutes: 30, couriers: clone(DEFAULT_COURIERS) }
+    version: 5, seq: 10544, products: clone(defaults), categories: clone(DEFAULT_CATEGORIES), orders, transactions, movements, messages, discounts,
+    users: clone(DEMO_USERS).map(u => ({ phone: '', addresses: [], wishlist: [], active: true, createdAt: '2024-03-01T00:00:00.000Z', ...u })),
+    outbox: [], audit: [], ...V5_FIELDS(orders),
+    settings: { announcement: 'Complimentary gift wrapping on every order · Island-wide delivery', supportEmail: 'hello@romanz.lk', supportPhone: '077 000 0000', shippingFee: SHIPPING, freeShippingOver: 0, reservationMinutes: 30, couriers: clone(DEFAULT_COURIERS), ...V5_SETTINGS }
   };
 }
 
+/* v5 additions: reviews, back-in-stock alerts, return requests and the studio notification feed. */
+const V5_SETTINGS = { returnDays: 14, autoCourier: false };
+const REVIEW_TEXT = [
+  [5, 'Even prettier in person', 'The finish catches the light beautifully and the gift box was gorgeous.'],
+  [5, 'My everyday piece now', 'Comfortable enough to wear all day. Already planning my next order.'],
+  [4, 'Lovely, runs slightly small', 'Beautiful detail. I’d suggest going half a size up for rings.'],
+  [5, 'Perfect gift', 'Bought it for my sister’s birthday and she hasn’t taken it off.'],
+  [4, 'Great quality for the price', 'Delivery to Kandy took three days, well packed.'],
+  [3, 'Nice but delicate', 'Pretty piece. The chain is finer than I expected from the photos.']
+];
+function V5_FIELDS(orders) {
+  const reviews = [];
+  orders.filter(o => o.status === 'Delivered').slice(0, 18).forEach((o, i) => {
+    const l = o.lines[0], [rating, title, body] = REVIEW_TEXT[i % REVIEW_TEXT.length];
+    if (reviews.some(r => r.productId === l.id && r.email === o.customer.email)) return;
+    reviews.push({ id: 'RV-S' + (100 + i), productId: l.id, email: o.customer.email, name: o.customer.name.split(' ')[0] + ' ' + o.customer.name.split(' ').slice(-1)[0][0] + '.', rating, title, body, date: new Date(new Date(o.date).getTime() + 6 * 86400000).toISOString(), status: i === 2 ? 'pending' : 'published', verified: true, reply: i === 0 ? { by: 'Romana Perera', body: 'Thank you so much! Enjoy wearing it.', date: o.date } : null });
+  });
+  return {
+    reviews,
+    alerts: [{ id: 'AL-S1', productId: 'aurora-rose', sku: 'AURORARO-US6', option: 'US 6', email: 'sara@example.com', date: orders[3].date, notified: null }, { id: 'AL-S2', productId: 'aurora-rose', sku: 'AURORARO-US7', option: 'US 7', email: 'nimal@example.com', date: orders[5].date, notified: null }],
+    returns: [], notices: []
+  };
+}
+function migrate(v) {
+  if (v?.version !== 4) return v;
+  return { ...v, version: 5, reviews: [], alerts: [], returns: [], notices: [], settings: { ...V5_SETTINGS, ...v.settings }, users: v.users.map(u => ({ wishlist: [], ...u })) };
+}
+
 /* ---------------------------------------------------------------- persistence */
-const isState = v => v && v.version === 4 && ['products', 'orders', 'transactions', 'messages', 'users'].every(k => Array.isArray(v[k]));
+const isState = v => v && v.version === 5 && ['products', 'orders', 'transactions', 'messages', 'users'].every(k => Array.isArray(v[k]));
 let cache = null;
 export function load() {
-  if (!cache) { try { const v = JSON.parse(localStorage.getItem(KEY)); cache = isState(v) ? v : sampleState(); } catch { cache = sampleState(); } }
+  if (!cache) { try { const v = JSON.parse(localStorage.getItem(KEY)); const m = migrate(v); cache = isState(m) ? m : sampleState(); } catch { cache = sampleState(); } }
   return clone(cache);
 }
 function save(s) {
+  fireAlerts(s);
   try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { throw Error('This browser’s demo storage is full. Remove some uploaded photos or reset the demo data.'); }
   cache = s; emit();
 }
@@ -158,7 +187,7 @@ export const subscribe = fn => {
   window.addEventListener(EVT, fn); window.addEventListener('storage', ext);
   return () => { window.removeEventListener(EVT, fn); window.removeEventListener('storage', ext); };
 };
-export function reset() { [KEY, BAG, MEDIA].forEach(k => localStorage.removeItem(k)); cache = null; mediaCache = null; emit(); }
+export function reset() { [KEY, BAG, MEDIA, WISH, SEEN].forEach(k => localStorage.removeItem(k)); cache = null; mediaCache = null; emit(); }
 
 export const money = n => 'LKR ' + Number(n).toLocaleString('en-LK', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 export const uid = prefix => prefix + '-' + globalThis.crypto.randomUUID().slice(0, 8).toUpperCase();
@@ -258,6 +287,7 @@ export function place({ items, delivery, method, customer, token, code = '', not
   for (const l of q.lines) moveStock(s, l, -l.qty, 'order', order.id, 'Checkout');
   if (q.code) s.discounts.find(d => d.code === q.code).uses++;
   s.orders.unshift(order);
+  notice(s, 'order', `New order ${order.id} · ${money(order.total)}${pending ? ' · awaiting payment' : ' · COD'}`, '/dashboard/orders?open=' + order.id);
   if (!pending) {
     s.transactions.unshift({ id: uid('TX'), date, method, outcome: 'Awaiting cash', total: q.total, token, orderId: order.id, source: 'checkout' });
     notify(s, { to: email, phone: order.customer.phone, subject: `Order ${order.id} confirmed`, body: `Thank you, ${order.customer.name.split(' ')[0]}! We’re preparing your order. Pay ${money(order.total)} in cash on delivery. Track it any time: ${trackLink(order)}`, orderId: order.id });
@@ -297,6 +327,7 @@ export function webhook(payload) {
   o.status = 'Confirmed'; o.payment = paymentFor(o.method, 'Confirmed'); o.expiresAt = null;
   o.events.unshift(ev(date, 'Confirmed', o.method === 'koko' ? 'Instalment plan approved · order confirmed' : 'Payment received · order confirmed', 'Payment gateway'));
   log('Approved (mock)', true);
+  notice(s, 'payment', `Payment received for ${o.id} · ${money(o.total)}`, '/dashboard/orders?open=' + o.id);
   notify(s, { to: o.customer.email, phone: o.customer.phone, subject: `Order ${o.id} confirmed`, body: `Thank you, ${o.customer.name.split(' ')[0]}! We received ${money(o.total)}. Track your order: ${trackLink(o)}`, orderId: o.id });
   save(s); return clone(o);
 }
@@ -343,7 +374,7 @@ export function setStatus(id, to, opts = {}, actor = SYSTEM) {
     text = `Shipped with ${courier}${tracking ? ' · ' + tracking : ''}`;
   }
   if (to === 'Cancelled' || to === 'Returned') {
-    if (o.reserved || to === 'Returned') for (const l of o.lines) moveStock(s, l, l.qty, to === 'Returned' ? 'return' : 'cancel', o.id, by);
+    if (o.reserved || to === 'Returned') for (const l of o.lines) { const q = l.qty - (to === 'Returned' ? returnedQty(s, o, l.sku) : 0); if (q > 0) moveStock(s, l, q, to === 'Returned' ? 'return' : 'cancel', o.id, by); }
     o.reserved = false; o.expiresAt = null;
     o.payment = o.method === 'cod' ? (o.payment === 'Collected (mock)' ? 'Refunded (mock)' : 'Cancelled') : o.payment === 'Awaiting payment' ? 'Cancelled' : 'Refunded (mock)';
   }
@@ -541,6 +572,7 @@ export function sendMessage({ name, email, topic, body, orderId }) {
   if (!name?.trim() || !email?.includes('@') || !body?.trim()) throw Error('Please add your name, email and a message.');
   const s = load();
   s.messages.unshift({ id: uid('MSG'), date: nowIso(), name: name.trim().slice(0, 80), email: email.trim().slice(0, 120), topic: topic || 'General', body: body.trim().slice(0, 2000), read: false, replies: [], orderId: orderId?.trim() || null });
+  notice(s, 'message', `Message from ${name.trim()} · ${topic || 'General'}`, '/dashboard/inbox');
   save(s);
 }
 export function markRead(id, read = true) { const s = load(), m = s.messages.find(m => m.id === id); if (m && m.read !== read) { m.read = read; save(s); } }
@@ -564,7 +596,7 @@ export function register({ name, email, password, phone }) {
   if (!/^\S+@\S+\.\S+$/.test(e)) throw Error('Please enter a valid email.');
   if (String(password || '').length < 8) throw Error('Use at least 8 characters for your password.');
   if (s.users.some(u => u.email === e)) throw Error('An account with that email already exists. Sign in instead.');
-  const u = { id: uid('u').toLowerCase(), name: name.trim().slice(0, 80), email: e, password, role: 'customer', title: 'ROMANZ Circle member', phone: String(phone || '').slice(0, 16), addresses: [], active: true, createdAt: nowIso() };
+  const u = { id: uid('u').toLowerCase(), name: name.trim().slice(0, 80), email: e, password, role: 'customer', title: 'ROMANZ Circle member', phone: String(phone || '').slice(0, 16), addresses: [], wishlist: [], active: true, createdAt: nowIso() };
   s.users.push(u);
   for (const o of s.orders) if (o.customer.email === e && !o.userId) o.userId = u.id; // link earlier guest orders
   notify(s, { to: e, subject: 'Welcome to ROMANZ', body: `Hi ${u.name.split(' ')[0]}, your account is ready. Your orders and tracking now live under My account.` });
@@ -624,6 +656,7 @@ export function saveSettings(settings, actor = SYSTEM) {
   if (!Number.isInteger(n.shippingFee) || n.shippingFee < 0 || n.shippingFee > 10000) throw Error('Delivery fee must be 0–10,000 LKR.');
   if (!Number.isInteger(n.freeShippingOver) || n.freeShippingOver < 0) throw Error('Free delivery threshold must be 0 (off) or more.');
   if (!Number.isInteger(n.reservationMinutes) || n.reservationMinutes < 1 || n.reservationMinutes > 1440) throw Error('Payment window must be 1–1440 minutes.');
+  if (!Number.isInteger(n.returnDays) || n.returnDays < 0 || n.returnDays > 90) throw Error('Return window must be 0–90 days.');
   if (!Array.isArray(n.couriers) || !n.couriers.length || n.couriers.some(c => !c.name?.trim())) throw Error('Keep at least one courier, each with a name.');
   s.settings = n; audit(s, actor, 'Settings saved', Object.keys(settings).join(', ')); save(s);
 }
@@ -634,7 +667,7 @@ export function customers(state = load()) {
   for (const u of state.users.filter(u => u.role === 'customer')) map.set(u.email, { name: u.name, email: u.email, city: u.addresses?.[0]?.city || '', phone: u.phone, orders: 0, spent: 0, last: null, account: true });
   for (const o of state.orders) {
     const c = map.get(o.customer.email) || { ...o.customer, orders: 0, spent: 0, last: o.date, account: false };
-    c.orders++; if (!['Cancelled', 'Returned', 'Pending payment'].includes(o.status)) c.spent += o.total;
+    c.orders++; if (!['Cancelled', 'Returned', 'Pending payment'].includes(o.status)) c.spent += o.total - (o.refunded || 0);
     if (!c.last || o.date > c.last) c.last = o.date; if (!c.city) c.city = o.customer.city; if (!c.phone) c.phone = o.customer.phone;
     map.set(o.customer.email, c);
   }
@@ -642,3 +675,209 @@ export function customers(state = load()) {
 }
 export const lowStock = (state = load()) => state.products.filter(p => p.status !== 'archived').flatMap(p => p.variants.filter(v => v.active && v.stock <= v.low).map(v => ({ p, v }))).sort((a, b) => a.v.stock - b.v.stock);
 export const isRevenue = o => !['Cancelled', 'Returned', 'Pending payment'].includes(o.status);
+
+/* ================================================================ advanced mock features (v5) */
+
+/* ---------------------------------------------------------------- studio notification feed */
+function notice(s, type, text, link) {
+  s.notices.unshift({ id: uid('NT'), date: nowIso(), type, text, link, readBy: [] });
+  s.notices.length = Math.min(s.notices.length, 200);
+}
+export function markNotices(userId, ids) {
+  const s = load(); let changed = false;
+  for (const n of s.notices) if ((!ids || ids.includes(n.id)) && !n.readBy.includes(userId)) { n.readBy.push(userId); changed = true; }
+  if (changed) save(s);
+}
+
+/* ---------------------------------------------------------------- reviews & ratings */
+export function ratingOf(state, productId) {
+  const list = state.reviews.filter(r => r.productId === productId && r.status === 'published');
+  return { count: list.length, avg: list.length ? Math.round(list.reduce((a, r) => a + r.rating, 0) / list.length * 10) / 10 : 0 };
+}
+const boughtAndReceived = (s, email, productId) => s.orders.some(o => o.customer.email === email && ['Delivered', 'Returned'].includes(o.status) && o.lines.some(l => l.id === productId));
+export function submitReview({ productId, rating, title, body, name, email }) {
+  const s = load(), e = String(email || '').trim().toLowerCase();
+  if (!s.products.some(p => p.id === productId && p.status === 'active')) throw Error('This piece is not available for reviews.');
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw Error('Choose a star rating.');
+  if (!name?.trim() || !/^\S+@\S+\.\S+$/.test(e)) throw Error('Add your name and email (your email is never shown).');
+  if (!body?.trim() || body.trim().length < 10) throw Error('Write at least a sentence (10+ characters).');
+  if (s.reviews.some(r => r.productId === productId && r.email === e && r.status !== 'hidden')) throw Error('You’ve already reviewed this piece. Thank you!');
+  const verified = boughtAndReceived(s, e, productId);
+  const r = { id: uid('RV'), productId, email: e, name: name.trim().slice(0, 40), rating, title: String(title || '').trim().slice(0, 80), body: body.trim().slice(0, 1200), date: nowIso(), status: 'pending', verified, reply: null };
+  s.reviews.unshift(r);
+  notice(s, 'review', `New ${rating}★ review${verified ? ' (verified buyer)' : ''} waiting for approval`, '/dashboard/reviews');
+  save(s); return r;
+}
+export function moderateReview(id, status, actor) {
+  if (!atLeast(actor, 'manager')) throw Error('Only managers can moderate reviews.');
+  if (!['published', 'hidden', 'pending'].includes(status)) throw Error('Invalid review status.');
+  const s = load(), r = s.reviews.find(r => r.id === id); if (!r) throw Error('Review not found.');
+  r.status = status; audit(s, actor, 'Review ' + status, `${r.rating}★ by ${r.name}`); save(s);
+}
+export function replyReview(id, body, actor) {
+  if (!atLeast(actor, 'manager')) throw Error('Only managers can reply to reviews.');
+  const s = load(), r = s.reviews.find(r => r.id === id); if (!r) throw Error('Review not found.');
+  r.reply = body?.trim() ? { by: actorName(actor), body: body.trim().slice(0, 600), date: nowIso() } : null;
+  if (r.reply) notify(s, { to: r.email, subject: 'ROMANZ replied to your review', body: r.reply.body });
+  save(s);
+}
+
+/* ---------------------------------------------------------------- wishlist & recently viewed */
+const readList = k => { try { const v = JSON.parse(localStorage.getItem(k) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } };
+export function wishlist(userId, state) {
+  if (!userId) return readList(WISH);
+  return (state || load()).users.find(u => u.id === userId)?.wishlist || [];
+}
+export function toggleWish(productId, userId) {
+  if (!userId) { const w = readList(WISH); localStorage.setItem(WISH, JSON.stringify(w.includes(productId) ? w.filter(x => x !== productId) : [productId, ...w].slice(0, 60))); emit(); return; }
+  const s = load(), u = s.users.find(u => u.id === userId); if (!u) return;
+  u.wishlist = u.wishlist?.includes(productId) ? u.wishlist.filter(x => x !== productId) : [productId, ...(u.wishlist || [])].slice(0, 60);
+  save(s);
+}
+// Guest wishlist moves into the account on sign-in.
+export function mergeGuestWishlist(userId) {
+  const guest = readList(WISH); if (!guest.length) return;
+  const s = load(), u = s.users.find(u => u.id === userId); if (!u) return;
+  u.wishlist = [...new Set([...(u.wishlist || []), ...guest])].slice(0, 60);
+  localStorage.removeItem(WISH); save(s);
+}
+export const recentlyViewed = () => readList(SEEN);
+export function markViewed(productId) { const v = readList(SEEN).filter(x => x !== productId); localStorage.setItem(SEEN, JSON.stringify([productId, ...v].slice(0, 12))); }
+
+/* ---------------------------------------------------------------- back-in-stock alerts */
+export function subscribeAlert(productId, option, email) {
+  const s = load(), e = String(email || '').trim().toLowerCase(), p = s.products.find(p => p.id === productId), v = variantOf(p, option);
+  if (!v) throw Error('That size is not available.');
+  if (!/^\S+@\S+\.\S+$/.test(e)) throw Error('Enter a valid email.');
+  if (v.stock > 0) throw Error('Good news: this size is in stock now.');
+  if (s.alerts.some(a => a.sku === v.sku && a.email === e && !a.notified)) return false;
+  s.alerts.unshift({ id: uid('AL'), productId, sku: v.sku, option: v.option, email: e, date: nowIso(), notified: null });
+  const waiting = s.alerts.filter(a => a.sku === v.sku && !a.notified).length;
+  notice(s, 'alert', `${waiting} waiting for ${p.name} · ${v.option}`, '/dashboard/products?tab=waitlist');
+  save(s); return true;
+}
+// Runs on every save: anyone waiting for a size that now has stock gets one email.
+function fireAlerts(s) {
+  for (const a of s.alerts || []) {
+    if (a.notified) continue;
+    const p = s.products.find(p => p.id === a.productId), v = p?.variants.find(v => v.sku === a.sku);
+    if (p?.status === 'active' && v?.active && v.stock > 0) {
+      a.notified = nowIso();
+      notify(s, { to: a.email, subject: `${p.name} (${v.option}) is back in stock`, body: `The piece you asked about is available again, but only ${v.stock} left. Shop it here: /shop/${p.id}` });
+    }
+  }
+}
+
+/* ---------------------------------------------------------------- return & exchange requests (RMA) */
+export const RETURN_STATUSES = ['requested', 'approved', 'rejected', 'received'];
+const deliveredAt = o => o.events.filter(e => e.status === 'Delivered').map(e => e.date).sort()[0] || null;
+const returnedQty = (s, o, sku) => s.returns.filter(r => r.orderId === o.id && r.status === 'received').reduce((a, r) => a + r.items.filter(i => i.sku === sku).reduce((x, i) => x + i.qty, 0), 0);
+export function returnWindow(o, state) {
+  const s = state || load(), at = deliveredAt(o);
+  if (o.status !== 'Delivered' || !at) return { ok: false, why: 'Returns open once the order is delivered.' };
+  const days = s.settings.returnDays, end = new Date(at).getTime() + days * 86400000;
+  if (Date.now() > end) return { ok: false, why: `The ${days}-day return window closed on ${new Date(end).toLocaleDateString('en-GB')}.` };
+  if (s.returns.some(r => r.orderId === o.id && ['requested', 'approved'].includes(r.status))) return { ok: false, why: 'A return for this order is already in progress.' };
+  return { ok: true, until: new Date(end).toISOString() };
+}
+export function requestReturn({ orderId, email, items, reason, type = 'refund', note = '' }) {
+  const s = load(), o = s.orders.find(o => o.id === orderId);
+  if (!o || o.customer.email !== String(email || '').trim().toLowerCase()) throw Error('Order not found for this account.');
+  const w = returnWindow(o, s); if (!w.ok) throw Error(w.why);
+  if (!['refund', 'exchange'].includes(type)) throw Error('Choose refund or exchange.');
+  if (!reason) throw Error('Tell us why you’re returning it.');
+  const picked = (items || []).filter(i => i.qty > 0);
+  if (!picked.length) throw Error('Choose at least one piece to return.');
+  for (const i of picked) {
+    const l = o.lines.find(l => l.sku === i.sku); if (!l) throw Error('That piece is not in this order.');
+    if (!Number.isInteger(i.qty) || i.qty > l.qty - returnedQty(s, o, i.sku)) throw Error(`You can return at most ${l.qty - returnedQty(s, o, i.sku)} × ${l.name}.`);
+    if (type === 'exchange') {
+      const p = s.products.find(p => p.id === l.id), v = variantOf(p, i.toOption);
+      if (!v || i.toOption === l.option) throw Error(`Choose a different size for ${l.name}.`);
+    }
+  }
+  const r = { id: 'RMA-' + (1000 + s.returns.length + 1), orderId: o.id, email: o.customer.email, name: o.customer.name, date: nowIso(), type, reason, note: String(note).trim().slice(0, 400), items: picked.map(i => ({ sku: i.sku, qty: i.qty, toOption: type === 'exchange' ? i.toOption : null })), status: 'requested', refund: 0, exchangeOrderId: null, label: null, log: [{ date: nowIso(), text: 'Requested by customer' }] };
+  s.returns.unshift(r);
+  o.events.unshift(ev(nowIso(), o.status, `${type === 'exchange' ? 'Exchange' : 'Return'} requested (${r.id})`, o.customer.name));
+  notify(s, { to: o.customer.email, subject: `We received your ${type} request ${r.id}`, body: 'We’ll review it within one working day and email you the next steps.', orderId: o.id });
+  notice(s, 'return', `${type === 'exchange' ? 'Exchange' : 'Return'} request ${r.id} for ${o.id}`, '/dashboard/returns');
+  save(s); return clone(r);
+}
+export function decideReturn(id, decision, note, actor) {
+  if (!atLeast(actor, 'manager')) throw Error('Only managers can approve or reject returns.');
+  const s = load(), r = s.returns.find(r => r.id === id); if (!r) throw Error('Return not found.');
+  if (r.status !== 'requested') throw Error('This return has already been decided.');
+  if (!['approved', 'rejected'].includes(decision)) throw Error('Approve or reject.');
+  if (decision === 'rejected' && !note?.trim()) throw Error('Give the customer a reason for rejecting.');
+  const o = s.orders.find(o => o.id === r.orderId);
+  r.status = decision; r.label = decision === 'approved' ? 'RL' + globalThis.crypto.randomUUID().slice(0, 8).toUpperCase() : null;
+  r.log.unshift({ date: nowIso(), text: (decision === 'approved' ? 'Approved' : 'Rejected') + ' by ' + actorName(actor) + (note?.trim() ? ': ' + note.trim() : '') });
+  o.events.unshift(ev(nowIso(), o.status, decision === 'approved' ? `Return ${r.id} approved · return label ${r.label}` : `Return ${r.id} not accepted${note?.trim() ? ': ' + note.trim() : ''}`, actorName(actor)));
+  notify(s, { to: r.email, subject: `Your ${r.type} request ${r.id} was ${decision}`, body: decision === 'approved' ? `Pack the piece(s) in the original box and hand them to any Domex counter with return label ${r.label}. We’ll ${r.type === 'exchange' ? 'send your new size' : 'refund you'} as soon as they arrive.` : `Sorry, we can’t accept this return. ${note.trim()}`, orderId: o.id });
+  audit(s, actor, 'Return ' + decision, r.id + ' · ' + o.id); save(s); return clone(r);
+}
+export function receiveReturn(id, actor) {
+  if (!atLeast(actor, 'staff')) throw Error('Sign in to the studio first.');
+  const s = load(), r = s.returns.find(r => r.id === id); if (!r) throw Error('Return not found.');
+  if (r.status !== 'approved') throw Error('Only approved returns can be received.');
+  const o = s.orders.find(o => o.id === r.orderId), by = actorName(actor), date = nowIso();
+  if (r.type === 'exchange') for (const i of r.items) {
+    const l = o.lines.find(l => l.sku === i.sku), v = variantOf(s.products.find(p => p.id === l.id), i.toOption);
+    if (!v || v.stock < i.qty) throw Error(`${l.name} in ${i.toOption} is out of stock. Restock it or refund instead.`);
+  }
+  for (const i of r.items) { const l = o.lines.find(l => l.sku === i.sku); moveStock(s, { id: l.id, sku: l.sku }, i.qty, 'return', o.id, by, r.id); }
+  r.status = 'received'; r.log.unshift({ date, text: 'Parcel received and checked by ' + by });
+  if (r.type === 'refund') {
+    r.refund = r.items.reduce((a, i) => a + o.lines.find(l => l.sku === i.sku).price * i.qty, 0);
+    // a code discount is shared across lines pro rata, so the refund never exceeds what was paid
+    if (o.discount) r.refund = Math.round(r.refund * (1 - o.discount / o.subtotal));
+    o.refunded = (o.refunded || 0) + r.refund;
+    const all = o.lines.every(l => returnedQty(s, o, l.sku) >= l.qty);
+    const exchanged = s.returns.some(x => x.orderId === o.id && x.type === 'exchange' && x.status === 'received');
+    if (all) o.status = 'Returned';
+    o.payment = all && !exchanged ? 'Refunded (mock)' : 'Partially refunded (mock)';
+    o.events.unshift(ev(date, all ? 'Returned' : o.status, `Return ${r.id} received · ${money(r.refund)} refunded`, by));
+    s.transactions.unshift({ id: uid('TX'), date, method: o.method, outcome: all ? 'Refunded (mock)' : 'Partial refund (mock)', total: r.refund, orderId: o.id, source: 'studio' });
+    notify(s, { to: r.email, subject: `Refund of ${money(r.refund)} for ${o.id}`, body: 'Your return arrived safely and we’ve refunded you (mock). It can take 5–7 working days to appear.', orderId: o.id });
+  } else {
+    const lines = r.items.map(i => { const l = o.lines.find(l => l.sku === i.sku), p = s.products.find(p => p.id === l.id), v = variantOf(p, i.toOption); return { id: p.id, sku: v.sku, name: p.name, image: p.image, option: v.option, price: 0, qty: i.qty }; });
+    const x = { ...clone(o), id: 'RZ-' + s.seq++, token: 'exchange-' + r.id, trackToken: 'trk' + globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 10), date, lines, subtotal: 0, discount: 0, code: null, shipping: 0, total: 0, status: 'Confirmed', payment: 'Exchange (no charge)', source: 'exchange', reserved: true, installments: null, expiresAt: null, shipment: null, notes: [], refunded: 0, events: [ev(date, 'Confirmed', `Replacement for ${o.id} (exchange ${r.id})`, by)] };
+    for (const l of lines) moveStock(s, l, -l.qty, 'order', x.id, by, 'Exchange ' + r.id);
+    s.orders.unshift(x); r.exchangeOrderId = x.id;
+    o.events.unshift(ev(date, o.status, `Exchange ${r.id} received · new size sent as ${x.id}`, by));
+    notify(s, { to: r.email, subject: `Your new size is on the way: ${x.id}`, body: `We received your return and created replacement order ${x.id}. Follow it here: ${trackLink(x)}`, orderId: x.id });
+  }
+  audit(s, actor, 'Return received', r.id); save(s); return clone(r);
+}
+
+/* ---------------------------------------------------------------- courier tracking simulator (stands in for a courier status webhook) */
+export const HUBS = ['Colombo sorting centre', 'Kandy hub', 'Galle hub', 'Kurunegala hub', 'Jaffna hub'];
+export function courierScan(orderId, kind) {
+  const o = load().orders.find(o => o.id === orderId); if (!o?.shipment) throw Error('This order has not been shipped yet.');
+  const courier = { id: 'courier', name: o.shipment.courier, role: 'system' };
+  if (kind === 'out') return setStatus(o.id, 'Out for delivery', {}, courier);
+  if (kind === 'delivered') return setStatus(o.id, 'Delivered', {}, courier);
+  const s = load(), x = s.orders.find(x => x.id === orderId);
+  if (!['Shipped', 'Out for delivery'].includes(x.status)) throw Error('The parcel is no longer with the courier.');
+  if (kind === 'hub') {
+    const hub = HUBS[Math.abs([...x.customer.city].reduce((a, c) => a + c.charCodeAt(0), 0)) % HUBS.length];
+    x.events.unshift(ev(nowIso(), x.status, `Arrived at ${hub}`, courier.name));
+  } else if (kind === 'failed') {
+    x.events.unshift(ev(nowIso(), x.status, 'Delivery attempt failed: nobody available. The courier will try again tomorrow.', courier.name));
+    if (x.status === 'Out for delivery') x.status = 'Shipped';
+    notify(s, { to: x.customer.email, phone: x.customer.phone, subject: `We missed you: ${x.id}`, body: `${courier.name} couldn’t deliver today. They’ll try again tomorrow, or call ${s.settings.supportPhone} to arrange a time.`, orderId: x.id });
+    notice(s, 'courier', `Failed delivery attempt for ${x.id}`, '/dashboard/orders?open=' + x.id);
+  } else throw Error('Unknown courier event.');
+  save(s); return clone(x);
+}
+// When "auto courier" is on, live orders move one step along every ~15 s so tracking can be watched end to end.
+export function courierTick(now = Date.now()) {
+  const s = load(); if (!s.settings.autoCourier) return 0;
+  let n = 0;
+  for (const o of s.orders.filter(o => o.source !== 'seed' && o.shipment && ['Shipped', 'Out for delivery'].includes(o.status))) {
+    if (now - new Date(o.events[0].date).getTime() < 15000) continue;
+    const atHub = o.events.some(e => e.text.startsWith('Arrived at'));
+    try { courierScan(o.id, o.status === 'Out for delivery' ? 'delivered' : atHub ? 'out' : 'hub'); n++; } catch { /* moved on meanwhile */ }
+  }
+  return n;
+}

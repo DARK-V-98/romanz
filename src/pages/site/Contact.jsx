@@ -1,11 +1,13 @@
 import { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { sendMessage } from '../../lib/store.js';
 import { FAQ } from '../../lib/content.js';
 
 export default function Contact() {
-  const [form, setForm] = useState({ name: '', email: '', topic: 'General', body: '' }), [msg, setMsg] = useState(null);
+  const orderId = useLocation().state?.orderId || '';
+  const [form, setForm] = useState({ name: '', email: '', topic: orderId ? 'Order help' : 'General', body: '', orderId }), [msg, setMsg] = useState(null);
   const f = k => ({ value: form[k], onChange: e => setForm({ ...form, [k]: e.target.value }) });
-  const submit = e => { e.preventDefault(); try { sendMessage(form); setMsg(['ok', 'Thank you! Your message is in the demo inbox (staff can read it in the dashboard).']); setForm({ name: '', email: '', topic: 'General', body: '' }); } catch (err) { setMsg(['err', err.message]); } };
+  const submit = e => { e.preventDefault(); try { sendMessage(form); setMsg(['ok', 'Thank you! Your message is in the demo inbox (staff can read it in the dashboard).']); setForm({ name: '', email: '', topic: 'General', body: '', orderId: '' }); } catch (err) { setMsg(['err', err.message]); } };
   return (
     <div className="page">
       <div className="page-head"><p className="eyebrow">Contact</p><h1>We’d love to <em>hear from you.</em></h1><p className="muted">Sizing, gifting or just saying hello. We reply within a day (sample promise).</p></div>
@@ -14,7 +16,8 @@ export default function Contact() {
           <div className="fgrid">
             <label>Name<input required {...f('name')} /></label>
             <label>Email<input type="email" required {...f('email')} /></label>
-            <label className="span2">Topic<select {...f('topic')}>{['General', 'Sizing', 'Gifting', 'Order help', 'Care'].map(t => <option key={t}>{t}</option>)}</select></label>
+            <label>Topic<select {...f('topic')}>{['General', 'Sizing', 'Gifting', 'Order help', 'Care'].map(t => <option key={t}>{t}</option>)}</select></label>
+            <label>Order number (optional)<input {...f('orderId')} placeholder="RZ-…" /></label>
             <label className="span2">Message<textarea required rows="5" {...f('body')} /></label>
           </div>
           {msg && <p className={'notice ' + msg[0]} role="status">{msg[1]}</p>}

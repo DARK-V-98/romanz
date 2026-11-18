@@ -1,21 +1,23 @@
 import { useState, useEffect } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth, ROLES, can } from '../../lib/auth.jsx';
-import { useStore } from '../../lib/hooks.js';
+import { useStore, useExpiryJob } from '../../lib/hooks.js';
 import { Icon } from '../../components/ui.jsx';
 
-const ITEMS = [['overview', '', 'grid', 'Overview'], ['orders', 'orders', 'box', 'Orders'], ['products', 'products', 'tag', 'Products'], ['customers', 'customers', 'users', 'Customers'], ['payments', 'payments', 'card', 'Payments'], ['inbox', 'inbox', 'mail', 'Inbox'], ['team', 'team', 'shield', 'Team & roles'], ['settings', 'settings', 'cog', 'Settings']];
+const PERM = { discounts: 'products', outbox: 'inbox' };
+const ITEMS = [['overview', '', 'grid', 'Overview'], ['orders', 'orders', 'box', 'Orders'], ['products', 'products', 'tag', 'Products'], ['customers', 'customers', 'users', 'Customers'], ['payments', 'payments', 'card', 'Payments'], ['discounts', 'discounts', 'gift', 'Discounts'], ['inbox', 'inbox', 'mail', 'Inbox'], ['outbox', 'outbox', 'send', 'Outbox'], ['team', 'team', 'shield', 'Team & roles'], ['settings', 'settings', 'cog', 'Settings']];
 
 export default function DashLayout() {
   const { user, logout } = useAuth(), { data } = useStore(), [open, setOpen] = useState(false), loc = useLocation();
   useEffect(() => setOpen(false), [loc.pathname]);
-  const unread = data.messages.filter(m => !m.read).length, processing = data.orders.filter(o => o.status === 'Processing').length;
+  useExpiryJob();
+  const unread = data.messages.filter(m => !m.read).length, processing = data.orders.filter(o => o.status === 'Confirmed').length;
   return (
     <div className="dash">
       <aside className={'side' + (open ? ' open' : '')}>
         <Link to="/" className="brand light"><img src="/logo.png" alt="" width="36" height="36" /><span>ROMANZ<small>STUDIO</small></span></Link>
         <nav>
-          {ITEMS.filter(([perm]) => can(user, perm)).map(([perm, to, icon, label]) => (
+          {ITEMS.filter(([perm]) => can(user, PERM[perm] || perm)).map(([perm, to, icon, label]) => (
             <NavLink key={perm} to={'/dashboard' + (to && '/' + to)} end={!to}>
               <Icon name={icon} size={18} /><span className="grow">{label}</span>
               {perm === 'inbox' && unread > 0 && <span className="pill">{unread}</span>}

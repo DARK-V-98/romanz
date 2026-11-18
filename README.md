@@ -15,14 +15,28 @@ Import the repo in Vercel (framework is auto-detected as Vite) or run `npx verce
 ## Demo logins (`/login`)
 | Role | Email | Password | Sees |
 |---|---|---|---|
-| Administrator | admin@romanz.lk | admin123 | Everything incl. team & settings |
-| Store manager | manager@romanz.lk | manager123 | Overview, orders, products, customers, payments, inbox |
-| Fulfilment staff | staff@romanz.lk | staff123 | Overview, orders (ship only, no cancel/refund), inbox |
-| Customer | customer@romanz.lk | customer123 | `/account`: own order history & tracking |
+| Administrator | admin@romanz.lk | admin123 | Everything incl. team, audit log & settings |
+| Store manager | manager@romanz.lk | manager123 | Orders (incl. cancel/refund/returns), products, discounts, customers, payments, inbox, outbox |
+| Fulfilment staff | staff@romanz.lk | staff123 | Orders (pack, ship, deliver only), inbox, outbox |
+| Customer | customer@romanz.lk | customer123 | `/account`: orders with tracking, profile, address book |
 
-## What's in it
-- **Store:** home, shop (filters/search/sort), product, bag, checkout (mock card with approve/decline/cancel, COD, pay-in-3), story, care, journal, contact (messages land in the dashboard inbox).
-- **Dashboard:** KPIs, 12-week revenue chart, category sales, low stock, orders with status drawer, product editor, customers, payment event log, inbox, role matrix, settings (announcement bar) and **Reset demo data**.
-- Sample data is seeded deterministically (64 orders, messages) in `src/lib/store.js`; copy and testimonials in `src/lib/content.js`.
+Customers can also create an account or reset a password (the reset code arrives in **Studio → Outbox**).
 
-Photography is Unsplash sample imagery (see ASSETS.md). Before production you need: a real database, real auth, server-side price/stock validation, a payment gateway with signed webhooks, and the client's real content.
+## What's mocked
+Every part of [docs/BACKEND_PLAN.md](docs/BACKEND_PLAN.md) runs as a working mock in `src/lib/store.js`, so the flows can be tested before the real backend exists:
+
+| Plan item | Mock |
+|---|---|
+| Database tables | localStorage state v4: products + variants (per-size SKU & stock), categories, orders with events/shipment/notes, payments, inventory movements, discounts, users, messages, outbox, audit log |
+| Item upload | Product editor with multi-photo upload (drag & drop, reorder, cover), resized to 1000 px in the browser and kept in a separate localStorage "bucket"; sizes/options with SKUs, price overrides and low-stock alerts; draft/live/archived; duplicate; stock adjustments with reasons; inventory log; categories; CSV import with preview |
+| Checkout (`/api/checkout`) | Server-style repricing, stock reservation, discount codes, free-delivery threshold, idempotent checkout token, guest or signed-in checkout with saved addresses |
+| Payment gateway + webhook | `/pay/:id` mock hosted page → signed notification → only a valid signature and amount mark the order paid. Includes a "forged webhook" button to show rejection, declines, duplicates and late payments |
+| Expiry cron | Unpaid card/Koko orders release stock after the payment window (checked every 30 s, or run manually in Settings) |
+| Order status machine | Pending payment → Confirmed → Packed → Shipped (courier + tracking no.) → Out for delivery → Delivered, plus Cancelled/Returned. Staff vs manager permissions enforced in the store, not just hidden in the UI |
+| Tracking | `/track` lookup by order number + email, private `/track/:id?t=` links, `/order/:id` confirmation, timeline in My account |
+| Emails / SMS | Written to **Studio → Outbox** instead of being sent |
+| Admin | Bulk mark packed, filters, CSV export, printable packing slips & labels, internal notes, COD collection, refunds, team invites & roles, audit log, settings for delivery fee, couriers and payment window |
+
+Sample data is seeded deterministically (64 orders with timelines, messages, discount codes). Try code `WELCOME10` at checkout.
+
+Photography is Unsplash sample imagery (see ASSETS.md). Before production you need the real backend from the plan: a database, real auth, server-side price/stock validation, a payment gateway with signed webhooks, real email/SMS, and the client's real content.

@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
-import { useStore } from '../lib/hooks.js';
+import { useStore, useExpiryJob } from '../lib/hooks.js';
 import { useAuth, homeFor } from '../lib/auth.jsx';
 import { Icon } from './ui.jsx';
 
-const NAV = [['/shop', 'Shop'], ['/story', 'Our story'], ['/journal', 'Journal'], ['/care', 'Care'], ['/contact', 'Contact']];
+const NAV = [['/shop', 'Shop'], ['/story', 'Our story'], ['/journal', 'Journal'], ['/care', 'Care'], ['/track', 'Track order'], ['/contact', 'Contact']];
 
 export default function SiteLayout() {
   const { data, bag } = useStore(), { user } = useAuth(), [open, setOpen] = useState(false), loc = useLocation();
   useEffect(() => setOpen(false), [loc.pathname]);
+  useExpiryJob();
   const count = bag.reduce((a, i) => a + i.qty, 0);
   return (
     <>
@@ -35,7 +36,7 @@ export default function SiteLayout() {
             <p className="muted">A little everyday extraordinary. Designed in Colombo, made to be worn and loved.</p>
           </div>
           <div><h4>Shop</h4><Link to="/shop?c=rings">Rings</Link><Link to="/shop?c=necklaces">Necklaces</Link><Link to="/shop?c=earrings">Earrings</Link><Link to="/shop?c=sets">Occasion sets</Link></div>
-          <div><h4>Help</h4><Link to="/care">Jewellery care</Link><Link to="/contact">Contact & FAQ</Link><Link to="/account">My orders</Link><Link to="/login">Staff login</Link></div>
+          <div><h4>Help</h4><Link to="/care">Jewellery care</Link><Link to="/contact">Contact & FAQ</Link><Link to="/track">Track an order</Link><Link to="/account">My orders</Link><Link to="/login">Staff login</Link></div>
           <div><h4>Visit</h4><p className="muted">Sample Studio, 42 Flower Road<br />Colombo 07, Sri Lanka<br />{data.settings.supportEmail}</p></div>
         </div>
         <div className="foot-bottom"><span>© 2026 ROMANZ Jewellery · Demo store, no real payments</span><span>Photography: Unsplash samples</span></div>

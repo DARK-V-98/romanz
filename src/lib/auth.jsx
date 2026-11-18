@@ -1,5 +1,6 @@
-/* Mock role-based login. Passwords are public demo values checked in the browser: not real authentication. */
-import { createContext, useContext, useState } from 'react';
+/* Mock login backed by the users table in the local store. Passwords are demo values checked in the browser: not real authentication. */
+import { createContext, useContext, useEffect, useState } from 'react';
+import { authenticate, register as registerUser, load, subscribe, DEMO_USERS } from './store.js';
 
 export const ROLES = {
   admin: { label: 'Administrator', can: ['overview', 'orders', 'products', 'customers', 'payments', 'inbox', 'team', 'settings'] },
@@ -7,29 +8,25 @@ export const ROLES = {
   staff: { label: 'Fulfilment staff', can: ['overview', 'orders', 'inbox'] },
   customer: { label: 'Customer', can: [] }
 };
-
-export const USERS = [
-  { id: 'u1', name: 'Romana Perera', email: 'admin@romanz.lk', password: 'admin123', role: 'admin', title: 'Founder & creative director' },
-  { id: 'u2', name: 'Chamari Weerasinghe', email: 'manager@romanz.lk', password: 'manager123', role: 'manager', title: 'Store manager' },
-  { id: 'u3', name: 'Lahiru Dissanayake', email: 'staff@romanz.lk', password: 'staff123', role: 'staff', title: 'Packing & dispatch' },
-  { id: 'u4', name: 'Demo Customer', email: 'customer@romanz.lk', password: 'customer123', role: 'customer', title: 'ROMANZ Circle member' }
-];
+export const USERS = DEMO_USERS;
 
 const KEY = 'romanz-session';
 const Ctx = createContext(null);
-const find = id => USERS.find(u => u.id === id) || null;
+const find = id => { const u = id && load().users.find(u => u.id === id); return u && u.active ? u : null; };
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => { try { return find(localStorage.getItem(KEY)); } catch { return null; } });
-  const login = (email, password) => {
-    const u = USERS.find(u => u.email === email.trim().toLowerCase() && u.password === password);
-    if (!u) throw Error('Email or password is incorrect. Try one of the demo accounts.');
-    localStorage.setItem(KEY, u.id); setUser(u); return u;
-  };
-  const logout = () => { localStorage.removeItem(KEY); setUser(null); };
-  return <Ctx.Provider value={{ user, login, logout }}>{children}</Ctx.Provider>;
+  const [id, setId] = useState(() => { try { return localStorage.getItem(KEY); } catch { return null; } });
+  const [user, setUser] = useState(() => find(id));
+  // Re-read the account whenever the store changes, so role changes and deactivation apply immediately.
+  useEffect(() => { setUser(find(id)); return subscribe(() => setUser(find(id))); }, [id]);
+  const start = u => { localStorage.setItem(KEY, u.id); setId(u.id); setUser(u); return u; };
+  const login = (email, password) => start(authenticate(email, password));
+  const register = input => start(registerUser(input));
+  const logout = () => { localStorage.removeItem(KEY); setId(null); setUser(null); };
+  return <Ctx.Provider value={{ user, login, register, logout }}>{children}</Ctx.Provider>;
 }
 
 export const useAuth = () => useContext(Ctx);
 export const can = (user, perm) => !!user && ROLES[user.role].can.includes(perm);
 export const homeFor = user => user.role === 'customer' ? '/account' : '/dashboard';
+export const actorOf = user => user ? { id: user.id, name: user.name, role: user.role } : undefined;

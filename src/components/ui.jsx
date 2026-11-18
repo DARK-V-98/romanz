@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { money, img, addToCart } from '../lib/store.js';
+import { money, img, addToCart, FLOW, COLLECTION_FLOW, publicEvents } from '../lib/store.js';
 
 const paths = {
   bag: <><path d="M4 8h16l1 14H3L4 8Z" /><path d="M8 10V6a4 4 0 0 1 8 0v4" /></>,
@@ -19,27 +19,31 @@ const paths = {
   spark: <path d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2Z" />,
   truck: <><path d="M2 6h12v10H2zM14 10h4l4 4v2h-8" /><circle cx="6" cy="18" r="2" /><circle cx="18" cy="18" r="2" /></>,
   gift: <><rect x="3" y="9" width="18" height="12" /><path d="M3 13h18M12 9v12M12 9C9 9 7 4 9.5 4S12 9 12 9Zm0 0c3 0 5-5 2.5-5S12 9 12 9Z" /></>,
-  arrow: <path d="M5 12h14M13 6l6 6-6 6" />
+  arrow: <path d="M5 12h14M13 6l6 6-6 6" />,
+  upload: <><path d="M12 16V4M7 9l5-5 5 5" /><path d="M4 16v4h16v-4" /></>,
+  print: <><path d="M6 9V3h12v6" /><rect x="3" y="9" width="18" height="8" rx="1" /><path d="M7 14h10v7H7z" /></>,
+  send: <path d="M3 11 21 3l-8 18-2-8-8-2Z" />,
+  layers: <><path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m3 13 9 5 9-5" /></>
 };
 export const Icon = ({ name, size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>
 );
 
 export function ProductCard({ p }) {
-  const out = p.stock <= 0;
+  const out = p.stock <= 0, first = p.variants.find(v => v.active && v.stock > 0);
   return (
     <article className="pcard">
       <Link to={'/shop/' + p.id} className="pcard-img">
         <img src={img(p.image)} alt={p.name} loading="lazy" />
-        <span className="pcard-tag">{out ? 'Sold out' : p.tag}</span>
+        <span className="pcard-tag">{out ? 'Sold out' : p.compareAt ? 'Sale' : p.tag}</span>
       </Link>
       <div className="pcard-body">
         <div>
           <p className="pcard-cat">{p.category}</p>
           <h3><Link to={'/shop/' + p.id}>{p.name}</Link></h3>
-          <p className="pcard-price">{money(p.price)}</p>
+          <p className="pcard-price">{money(p.price)}{p.compareAt && <s className="muted"> {money(p.compareAt)}</s>}</p>
         </div>
-        <button className="icon-btn" disabled={out} onClick={() => addToCart(p.id, p.options[0])} aria-label={'Add ' + p.name + ' to bag'} title="Quick add"><Icon name="bag" size={18} /></button>
+        <button className="icon-btn" disabled={out} onClick={() => first && addToCart(p.id, first.option)} aria-label={'Add ' + p.name + ' to bag'} title={first ? 'Quick add · ' + first.option : 'Sold out'}><Icon name="bag" size={18} /></button>
       </div>
     </article>
   );
@@ -47,3 +51,18 @@ export function ProductCard({ p }) {
 
 export const Badge = ({ children }) => <span className={'badge b-' + String(children).toLowerCase().split(/[ (]/)[0]}>{children}</span>;
 export const fmtDate = d => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+export const fmtTime = d => new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+// Progress bar plus event list for an order. `all` shows internal events too (studio view).
+export function Timeline({ order, all = false }) {
+  const steps = order.delivery === 'collection' ? COLLECTION_FLOW : FLOW;
+  const label = s => order.delivery === 'collection' && s === 'Delivered' ? 'Collected' : s;
+  const reached = Math.max(...order.events.map(e => steps.indexOf(e.status)), order.status === 'Pending payment' ? -1 : 0);
+  const events = all ? order.events : publicEvents(order);
+  return (
+    <div className="timeline">
+      {!['Cancelled', 'Returned', 'Pending payment'].includes(order.status) && <ol className="track">{steps.map((s, i) => <li key={s} className={reached >= i ? 'on' : ''}>{label(s)}</li>)}</ol>}
+      <ul className="events">{events.map((e, i) => <li key={i} className={e.visible ? '' : 'internal'}><b>{e.text}</b><small>{fmtTime(e.date)}{all && ' · ' + e.by}{!e.visible && ' · internal'}</small></li>)}</ul>
+    </div>
+  );
+}
